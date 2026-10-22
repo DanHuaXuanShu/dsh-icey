@@ -1,0 +1,31 @@
+# 依赖（这个插件是零依赖，通常不会有）
+node_modules/
+
+# 打包产物
+*.tgz
+
+# 截图与证据（**很大**：shots/ 约 350 MB，绝不能进仓库）
+shots/
+*.bmp
+
+# 抓包/调试图片（probe 里的 .mjs 要留，图片不留）
+probe/**/*.png
+probe/**/*.bmp
+probe/out.*
+
+# WorkBuddy 导出的排查记录与「DSH 应用源码副本」——
+# 里面含从 app.asar 解出来的第三方代码，不放进仓库
+workbuddy/
+
+# 日志与系统文件
+*.log
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 本地配置/密钥（绝不提交）
+.npmrc
+*.pem
+*.key
+.env
+.env.*

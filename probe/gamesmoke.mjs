@@ -1,0 +1,13 @@
+﻿import { GameSession } from "../lib/game.mjs";
+const gs = new GameSession({ getConfig: () => ({}) });
+const st = await gs.attach();
+console.log("attach:", JSON.stringify({attached: st.attached, hwnd: st.hwnd, pid: st.pid, fg: st.foreground, health: st.health}));
+const look = await gs.look({ maxWidth: 960 });
+console.log("look:", JSON.stringify({w: look.width, h: look.height, pngBytes: look.png.length, hash: look.health.hash, nonBlack: +look.health.nonBlack.toFixed(3)}));
+const fs = await import("node:fs");
+fs.writeFileSync("D:/dsh/ICEY插件/shots/game-look.png", look.png);
+console.log("wrote game-look.png");
+const st2 = await gs.status();
+console.log("status:", JSON.stringify({running: st2.running, playable: st2.health.playable, windowAlive: st2.windowAlive, koffiOk: st2.backend?.koffiOk}));
+await gs.dispose();
+console.log("disposed");

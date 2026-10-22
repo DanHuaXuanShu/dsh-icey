@@ -1,0 +1,76 @@
+{
+  "name": "dsh-icey",
+  "version": "0.1.0",
+  "description": "让 DeepSeek Harness 的 agent 真的能玩《艾希 ICEY》：实时画面、看得懂的截图、按得动的操作，外加侧栏里一个看台面板。",
+  "type": "module",
+  "license": "MIT",
+  "author": "dsh-icey",
+  "os": [
+    "win32"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./agent": "./agent.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "main": "./index.js",
+  "files": [
+    "index.js",
+    "agent.js",
+    "client.js",
+    "lib",
+    "locale/*.json",
+    "icon.svg",
+    "cordis.patch.yml",
+    "selfcheck.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "game",
+    "icey",
+    "艾希",
+    "computer-use",
+    "windows"
+  ],
+  "engines": {
+    "dsh": ">=0.2.0-rc.1",
+    "node": ">=22"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/schemastery": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    }
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ]
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

@@ -1,0 +1,13 @@
+﻿import { NativeBackend } from "../lib/host.mjs";
+import { ensureForeground, restoreForeground } from "../lib/vision.mjs";
+const nb = new NativeBackend();
+await nb.start();
+const icey = (await nb.find("ICEY.exe")).hwnd;
+console.log("动作前 ICEY 样式:", JSON.stringify(await nb.call({ cmd: "styles", hwnd: icey }, 5000)));
+const before = (await nb.getForeground()).hwnd;
+const r = await ensureForeground(nb, icey, { allowFocus: true });
+console.log("抢完前台:", (await nb.getForeground()).hwnd, "（ICEY =", icey, "）");
+await restoreForeground(nb, r.previousHwnd);
+console.log("还完前台:", (await nb.getForeground()).hwnd, "（动作前 =", before, "）");
+console.log("动作后 ICEY 样式:", JSON.stringify(await nb.call({ cmd: "styles", hwnd: icey }, 5000)));
+await nb.dispose();

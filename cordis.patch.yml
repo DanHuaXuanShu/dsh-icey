@@ -1,0 +1,19 @@
+# dsh-icey 的 bundle patch：**只插一行**。
+#
+#   dsh-icey   宿主：/api/dsh-icey/* 路由（面板实时画面、状态、动作）+ 配置；
+#              同一个文件末尾会顺带注册 6 个 icey_* 工具（用 ctx.get 探测 tools/attachments）。
+#
+# 🔴 为什么不再插第二行 `dsh-icey/agent`（2026-10-22 改）：
+#   插两行会让插件列表里出现**两个标题一样的「艾希 ICEY」**。
+#   宿主规则是：行标题 = row.meta?.title ?? row.moduleName（见 dsh-plugin-manager 的
+#   row 构造代码），而 metaOf() 是**按包**取 locale 的 meta.title ——
+#   同一个包的两行，标题必然相同，只有名字后缀（dsh-icey / dsh-icey/agent）不同，
+#   非常容易混淆。
+#   合成一行后界面只有一个条目；工具是否注册改由运行时探测决定，
+#   缺 tools/attachments 的部署只跳过工具 —— 优雅降级没有丢。
+#
+# package.json 仍然导出 "./agent": "./agent.js"，那是给 index.js 内部 import 用，
+# 也留着以后想单独把工具挂到某个 agent 预设时用。
+- insert:
+    - id: dsh-icey
+      name: dsh-icey
