@@ -79,6 +79,53 @@ npm v12（现在是 `latest`，本机还是 11.19.0）默认：
 
 ---
 
+## 🚀 已经配好的 CI 自动发版（`.github/workflows/publish.yml`）
+
+仓库里已经有一个 GitHub Actions workflow，用 **Trusted Publishing（OIDC）** 发布，
+不需要任何 token、不用手动点浏览器确认。
+
+### 一次性准备（npm 网站上人工做一次）
+
+```
+npmjs.com → Packages → dsh-icey → Settings → Trusted Publisher
+  Publisher:    GitHub Actions
+  Organization: DanHuaXuanShu
+  Repository:   dsh-icey
+  Workflow:     publish.yml      ← 必须和文件名一致，大小写敏感
+  Environment:  留空
+```
+
+### 之后发版（两步）
+
+```powershell
+npm.cmd version patch        # 抬版本号 + 打 tag（0.2.0 → 0.2.1）
+git push --follow-tags       # 推代码和 tag → Actions 自动发布
+```
+
+`git push --follow-tags` 会把 `v0.2.1` 这个 tag 一起推上去，workflow 由 tag 触发。
+
+### workflow 里做了哪些门禁
+
+发布前会依次跑，任何一步挂了就不发：
+
+| 步骤 | 作用 |
+|---|---|
+| `node selfcheck.mjs` | 47 项纯逻辑自检 |
+| `node probe/schema-check.mjs` | 6 个工具的 schema 是不是合法 JSON Schema |
+| `node probe/client-check.mjs` | 客户端自注册 / slot / 二进制帧解析 |
+| `node probe/apply-harness.mjs` | 桩 ctx 下插件能激活、工具数正确 |
+| `npm pack --dry-run` | 打印实际会发出去的文件清单 |
+| tag 与 `package.json` 版本一致性 | 防止 tag 和版本号错位 |
+
+最后 `npm publish --provenance --access public`：
+`--provenance` 会生成 SLSA 来源证明，npm 包页面会显示「已验证来自此仓库」。
+
+> ⚠️ **这几个 CI 探针不能依赖 Windows**：`selfcheck` / `schema-check` / `client-check` /
+> `apply-harness` 都是纯 JS，在 ubuntu runner 上能跑（本地实测 4 个 exit=0）。
+> 需要 koffi / user32 的探针（`tool-check` / `stream-check` / `focus-check`）**故意没放进 CI**。
+
+---
+
 ## 发布前已经验过的（2026-10-21）
 
 | 项目 | 结果 |
