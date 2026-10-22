@@ -1,10 +1,18 @@
 {
   "name": "dsh-icey",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "让 DeepSeek Harness 的 agent 真的能玩《艾希 ICEY》：实时画面、看得懂的截图、按得动的操作，外加侧栏里一个看台面板。",
   "type": "module",
   "license": "MIT",
   "author": "dsh-icey",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DanHuaXuanShu/dsh-icey.git"
+  },
+  "homepage": "https://github.com/DanHuaXuanShu/dsh-icey#readme",
+  "bugs": {
+    "url": "https://github.com/DanHuaXuanShu/dsh-icey/issues"
+  },
   "os": [
     "win32"
   ],
