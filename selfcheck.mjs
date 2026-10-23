@@ -481,16 +481,24 @@ console.log('\n[6] 自主连玩策略')
 
   // ㉗b 箭头检测器：用真实画面切片做回归（probe/fixtures/arrow-strip.png）
   //    合成贴图不行 —— 模板里大量是暗背景像素，贴出来填充率对不上。
+  //    素材必须进仓库（.gitignore 里给它开了例外），否则 CI 上跑不了；
+  //    万一缺失就**明确跳过**而不是报错，免得把「素材没带」误当成检测器坏了。
   const { findGuideArrow } = await import('./lib/guide-arrow.mjs')
   const { decodePng } = await import('./lib/png-decode.mjs')
   const fsSync = await import('node:fs')
-  const stripPos = decodePng(fsSync.readFileSync('probe/fixtures/arrow-strip.png'))
-  const posHit = findGuideArrow(stripPos.rgba, stripPos.width, stripPos.height)
-  ok('真实画面里的箭头 → 检测到', posHit.hit === true, JSON.stringify(posHit))
-  ok('箭头方向 right', posHit.dir === 'right', JSON.stringify(posHit))
-  ok('箭头横向位置 ~41%', Math.abs(posHit.x - 0.41) < 0.06, String(posHit.x))
-  const stripNeg = decodePng(fsSync.readFileSync('probe/fixtures/arrow-strip-none.png'))
-  ok('同一帧的无关区域 → 不误报', findGuideArrow(stripNeg.rgba, stripNeg.width, stripNeg.height).hit === false, '')
+  const FIX_POS = 'probe/fixtures/arrow-strip.png'
+  const FIX_NEG = 'probe/fixtures/arrow-strip-none.png'
+  if (!fsSync.existsSync(FIX_POS) || !fsSync.existsSync(FIX_NEG)) {
+    console.log('  --    跳过箭头素材回归：probe/fixtures/ 下的截图缺失（不影响其它检查）')
+  } else {
+    const stripPos = decodePng(fsSync.readFileSync(FIX_POS))
+    const posHit = findGuideArrow(stripPos.rgba, stripPos.width, stripPos.height)
+    ok('真实画面里的箭头 → 检测到', posHit.hit === true, JSON.stringify(posHit))
+    ok('箭头方向 right', posHit.dir === 'right', JSON.stringify(posHit))
+    ok('箭头横向位置 ~41%', Math.abs(posHit.x - 0.41) < 0.06, String(posHit.x))
+    const stripNeg = decodePng(fsSync.readFileSync(FIX_NEG))
+    ok('同一帧的无关区域 → 不误报', findGuideArrow(stripNeg.rgba, stripNeg.width, stripNeg.height).hit === false, '')
+  }
   // ㉙ 宝箱靠「持续性」确认（用户纠正：连钱符号都是蓝的，没有金色可用）
   const tk1 = createChestTracker()
   const flash = [0, 300, 600].map((ms) => tk1.feed({ chest: 3, chestX: 0.5 }, ms)).filter(Boolean)
