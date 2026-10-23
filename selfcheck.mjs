@@ -215,12 +215,13 @@ console.log('\n[6] 自主连玩策略')
   const p1 = createPolicy('advance')
   const d1 = p1.decide({ motion: 0, hudKick: 0 }, { now: 0 })
   ok('静止第 1 次 → 反向挪（不是继续走）', d1.action === 'move' && d1.dir === 'left', JSON.stringify(d1))
-  // 第 2 下必须是 **J**：ICEY 的互动键是 J（提示框写「按 J: 开启强化」），不是 Enter
+  // 第 2 下是**通用互动键 Enter**（PlayerPrefs 里叫 Search）
   const d2 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2000 })
-  ok('静止第 2 次 → 按 J（ICEY 的互动键）', d2.action === 'attack', JSON.stringify(d2))
+  ok('静止第 2 次 → 按 Enter（通用互动键）', d2.action === 'interact', JSON.stringify(d2))
+  // 第 3 下是跳（Enter 刚按过，别连点）
   const dStuck3 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2400 })
-  ok('静止第 3 次 → 按确认键', dStuck3.action === 'interact', JSON.stringify(dStuck3))
-  ok('确认键有节流（刚按过不会连点）', p1.decide({ motion: 0, hudKick: 0 }, { now: 2500 }).action !== 'interact', 'throttled')
+  ok('静止第 3 次 → 跳（Enter 刚按过）', dStuck3.action === 'jump', JSON.stringify(dStuck3))
+  ok('Enter 有节流（刚按过不会连点）', p1.decide({ motion: 0, hudKick: 0 }, { now: 2500 }).action !== 'interact', 'throttled')
 
   // ⑥ 策略：HUD 在跳 → 打架，出攻击/重击
   const p2 = createPolicy('advance')
@@ -316,8 +317,9 @@ console.log('\n[6] 自主连玩策略')
   ok('阶梯里会出现跳', kinds.includes('jump'), kinds.join(','))
   ok('阶梯里会出现攻击', kinds.includes('attack'), kinds.join(','))
   ok('不会一直只做同一个动作', new Set(kinds.filter((k) => k !== 'wait')).size >= 3, kinds.join(','))
-  ok('UNSTUCK_LADDER 是 5 步', UNSTUCK_LADDER.length === 5, JSON.stringify(UNSTUCK_LADDER))
-  ok('阶梯第二下是 J（互动键优先于 Enter）', UNSTUCK_LADDER[1] === 'j', JSON.stringify(UNSTUCK_LADDER))
+  ok('UNSTUCK_LADDER 是 4 步', UNSTUCK_LADDER.length === 4, JSON.stringify(UNSTUCK_LADDER))
+  ok('阶梯第二下是 Enter（唯一的互动键）', UNSTUCK_LADDER[1] === 'interact', JSON.stringify(UNSTUCK_LADDER))
+  ok('阶梯里不再有 J（J 只是攻击）', !UNSTUCK_LADDER.includes('j'), JSON.stringify(UNSTUCK_LADDER))
 
   // ⑲ 一整轮阶梯都失败 ⇒ 必须「掉头」而不是继续撞；且方向真的翻了
   const p12 = createPolicy('advance')
