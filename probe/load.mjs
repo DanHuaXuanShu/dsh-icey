@@ -1,4 +1,4 @@
-﻿// 持续抓帧 25 秒（跟面板开着一样），同时测 DSH 的 HTTP 响应时间
+// 持续抓帧 25 秒（跟面板开着一样），同时测 DSH 的 HTTP 响应时间
 import { configure, session } from "../lib/session.mjs";
 configure({ getConfig: () => ({}) });
 const s = session();

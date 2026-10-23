@@ -53,13 +53,25 @@ jobs:
       - name: 升级 npm
         run: npm install -g npm@latest && npm --version
 
+      # UTF-8 BOM 会让 JSON.parse 直接失败（PowerShell 5.1 的 Set-Content 默认加 BOM，
+      # 这个坑踩过一次：package.json 带 BOM 把自己写的探针搞挂了）
+      - name: 检查 UTF-8 BOM
+        run: |
+          node -e "
+          const fs=require('fs'),path=require('path'),exts=new Set(['.js','.mjs','.json','.yml','.yaml','.md','.svg']);
+          let bad=[];
+          (function walk(d){for(const e of fs.readdirSync(d,{withFileTypes:true})){if(['.git','node_modules','shots','workbuddy'].includes(e.name))continue;const p=path.join(d,e.name);if(e.isDirectory()){walk(p);continue}if(!exts.has(path.extname(e.name).toLowerCase()))continue;const b=fs.readFileSync(p);if(b[0]===0xEF&&b[1]===0xBB&&b[2]===0xBF)bad.push(p)}})('.');
+          if(bad.length){console.log('带 BOM 的文件:');bad.forEach(p=>console.log('  '+p));process.exit(1)}
+          console.log('没有 BOM');
+          "
+
       # 第一道门禁：**绝不能把密钥发到公开仓库 / 公开包**
       # 2026 年 GitHub 上硬编码密钥大面积泄漏，最常见就是 .env 被一起推上去。
       - name: 密钥扫描（工作区 + git 历史）
         run: node probe/secret-scan.mjs --history
 
       # 这个包是**零依赖**，不需要 npm install；直接跑自检和探针当门禁。
-      - name: 自检（47 项）
+      - name: 自检（67 项）
         run: node selfcheck.mjs
 
       - name: 工具 schema 校验
@@ -70,6 +82,9 @@ jobs:
 
       - name: 插件激活校验（桩 ctx）
         run: node probe/apply-harness.mjs
+
+      - name: 自主连玩循环校验（桩后端）
+        run: node probe/play-loop-check.mjs
 
       # 打印实际会发出去的文件，便于在 Actions 日志里核对
       - name: 预演打包

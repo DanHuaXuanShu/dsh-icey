@@ -1,4 +1,4 @@
-﻿import { configure, session } from "../lib/session.mjs";
+import { configure, session } from "../lib/session.mjs";
 import fs from "node:fs";
 configure({ getConfig: () => ({}) });
 const s = session();

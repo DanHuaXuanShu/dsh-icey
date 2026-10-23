@@ -16,6 +16,7 @@
  */
 import { loadHostDeps } from './lib/hostdeps.mjs'
 import { session } from './lib/session.mjs'
+import { summarizeRun } from './lib/autoplay.mjs'
 
 export const name = 'dsh-icey-agent'
 export const inject = ['tools', 'attachments']
@@ -316,12 +317,70 @@ export function apply(ctx) {
     },
   })
 
-  /* ---------------- 6. 停止 ---------------- */
+  /* ---------------- 6. 自主连玩（不用每步都问） ---------------- */
+
+  tool({
+    name: 'icey_play',
+    description:
+      '**自己连着玩一段**，中途不用再问任何人。一次调用跑完一整段：自动决定走位/攻击/过对话，'
+      + '结束后返回「做了什么、途中发生了什么、几张关键截图」。\n'
+      + '什么时候用：想让游戏往前走一段（推进剧情、清一波小怪、探路），而不是每一步都要你决定。\n'
+      + 'preset：advance（默认，往右推进 + 节奏性挥刀）/ fight（原地连打）/ explore（走得多、偶尔跳）。\n'
+      + '⚠️ 说清楚它的能力边界：这是**侧滚轴游戏的常识性自动驾驶**，靠「画面动不动」和「HUD 变不变」'
+      + '两个信号决策，**没有视觉理解**。它能自己推进和打架，但遇到解谜、分支选择、需要看剧情的选项时会卡住——'
+      + '那种情况它会停下来并把原因告诉你，别指望它自己破解谜题。\n'
+      + '返回里的截图按时间顺序排列，用它们判断这轮有没有实际进展。',
+    parameters: {
+      seconds: { type: 'integer', description: '连玩多久（5–300 秒，默认 30）。先试 30 秒，看得动再加长' },
+      preset: { type: 'string', description: 'advance / fight / explore，默认 advance' },
+      captureEvery: { type: 'integer', description: '每隔几秒留一张途中截图（默认 12）' },
+      maxFrames: { type: 'integer', description: '最多留几张截图（0–4，默认 3；每张都花 token）' },
+      dir: { type: 'string', description: '推进方向 right / left，默认 right' },
+    },
+    output: imageOutput,
+    async execute(args) {
+      const s = session()
+      const st = await s.status()
+      if (!st.running) {
+        return { text: `没接上游戏，没法连玩。${st.health?.reason || ''}\n下一步：icey_start。`, image: null }
+      }
+      const res = await s.play({
+        seconds: args.seconds,
+        preset: args.preset,
+        captureEvery: args.captureEvery,
+        maxFrames: args.maxFrames,
+        dir: args.dir,
+      })
+      if (!res.ok) {
+        return { text: `连玩没开始：${res.error}\n下一步：icey_status 看能不能操作，或 icey_start 先接上。`, image: null }
+      }
+
+      const lines = [summarizeRun(res)]
+      // 一次调用只带一张图（第一张）进消息，其余提示可用 frames 数量说明——
+      // 多图很吃 token，而这一轮的主要信息在摘要里。
+      let image = null
+      if (res.frames?.length) {
+        try {
+          const refs = await ctx.attachments.saveImages(
+            res.frames.map((f, i) => ({ data: f.png, mediaType: 'image/png', name: `icey-play-${i + 1}` })),
+          )
+          image = refs[0] || null
+          if (refs.length > 1) lines.push(`（另外还留了 ${refs.length - 1} 张，需要看的话用 icey_look 单独取）`)
+        } catch (e) {
+          lines.push(`（途中截图没存成：${e?.message || e}）`)
+        }
+      }
+      lines.push('下一步：看截图判断进展；要继续就再调一次 icey_play，想精确操作就 icey_act。')
+      return { text: lines.join('\n'), image }
+    },
+  })
+
+  /* ---------------- 7. 停止 ---------------- */
 
   tool({
     name: 'icey_stop',
     description:
-      '停止插件对《艾希》的接管：松开所有按键、关掉实时画面、释放原生后端。\n'
+      '停止插件对《艾希》的接管：松开所有按键、关掉实时画面、释放原生后端（正在连玩的话也会停）。\n'
       + '注意：**不会关闭游戏本身**，游戏继续开着，随时可以 icey_start 接回来。\n'
       + '做完一轮、或者要交还控制权给用户的时候调它（保证不留卡住的键）。',
     parameters: {},

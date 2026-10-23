@@ -51,6 +51,7 @@ window.__ModuleLoader__.load({
 [data-icey-empty]{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--dsw-alias-label-secondary);font-size:13px;text-align:center;padding:24px;}
 [data-icey-foot]{padding:6px 10px 8px;font-size:11px;color:var(--dsw-alias-label-secondary);border-top:1px solid var(--dsw-alias-border-l1);line-height:1.6;}
 [data-icey-err]{color:var(--dsw-alias-state-error-primary);}
+[data-icey-playing]{color:var(--dsw-alias-brand-primary);font-weight:600;}
 [data-icey-fps]{font-variant-numeric:tabular-nums;font-size:11px;color:var(--dsw-alias-label-secondary);}
 `
 
@@ -337,6 +338,13 @@ window.__ModuleLoader__.load({
         h('div', { 'data-icey-foot': '' },
           streamError ? h('div', { 'data-icey-err': '' }, streamError) : null,
           msg ? h('div', { 'data-icey-err': '' }, msg) : null,
+          // 自主连玩中：把进度显示出来（面板只管看，玩的是 DSH）
+          status?.playing
+            ? h('div', { 'data-icey-playing': '' },
+              `▶ 自主连玩中：${Math.round((status.playing.elapsedMs || 0) / 1000)}s / ${status.playing.seconds}s`
+              + `（${status.playing.preset}）　动作 ${Object.values(status.playing.actions || {}).reduce((a, b) => a + b, 0)} 次`
+              + (status.playing.events?.length ? `　最近：${status.playing.events[status.playing.events.length - 1]}` : ''))
+            : null,
           !running
             ? '游戏没接上。'
             : (canAct

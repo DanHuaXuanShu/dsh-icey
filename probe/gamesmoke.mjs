@@ -1,4 +1,4 @@
-﻿import { GameSession } from "../lib/game.mjs";
+import { GameSession } from "../lib/game.mjs";
 const gs = new GameSession({ getConfig: () => ({}) });
 const st = await gs.attach();
 console.log("attach:", JSON.stringify({attached: st.attached, hwnd: st.hwnd, pid: st.pid, fg: st.foreground, health: st.health}));

@@ -452,7 +452,7 @@ export function apply(ctx, config = {}) {
     try {
       // agent.js 的 apply 是同步的（只调 ctx.tools.register）
       applyAgentHalf(target)
-      log('[icey] agent 半就绪：6 个 icey_* 工具已注册')
+      log('[icey] agent 半就绪：7 个 icey_* 工具已注册')
     } catch (e) {
       // 工具注册失败不能连累面板/路由
       log(`[icey] agent 半注册失败（工具不可用，面板照常）：${e?.message || e}`)
@@ -462,7 +462,7 @@ export function apply(ctx, config = {}) {
   if (typeof ctx.inject === 'function') {
     // 可选依赖：服务齐了才回调，不齐就永远不调 —— 本插件照样激活。
     // 这条日志**无条件**打，这样「工具没出现」时能立刻看出是等在等服务，而不是莫名消失。
-    log('[icey] 6 个 icey_* 工具将以可选依赖方式注册（等 tools + attachments 就绪）')
+    log('[icey] 7 个 icey_* 工具将以可选依赖方式注册（等 tools + attachments 就绪）')
     ctx.inject(['tools', 'attachments'], (sub) => registerTools(sub))
   } else {
     // 老版本 Cordis 没有动态 inject：退化成即时探测（可能因顺序而跳过）

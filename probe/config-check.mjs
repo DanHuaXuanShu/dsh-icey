@@ -1,4 +1,4 @@
-﻿import { configure } from "../lib/session.mjs";
+import { configure } from "../lib/session.mjs";
 import { configPath, loadOverrides, saveOverrides } from "../lib/store.mjs";
 const routes = new Map();
 const ctx = {

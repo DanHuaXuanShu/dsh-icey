@@ -1,4 +1,4 @@
-﻿import { NativeBackend } from "../lib/host.mjs";
+import { NativeBackend } from "../lib/host.mjs";
 import { ensureForeground, restoreForeground } from "../lib/vision.mjs";
 const nb = new NativeBackend();
 await nb.start();

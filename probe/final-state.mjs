@@ -1,4 +1,4 @@
-﻿import { configure, session } from "../lib/session.mjs";
+import { configure, session } from "../lib/session.mjs";
 import { encodePng } from "../lib/png.mjs";
 import fs from "node:fs";
 configure({ getConfig: () => ({}) });

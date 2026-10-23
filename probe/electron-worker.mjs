@@ -1,4 +1,4 @@
-﻿// 在 DSH 自己的 Electron 运行时里加载 worker + koffi，看会不会炸 / 能不能抓帧
+// 在 DSH 自己的 Electron 运行时里加载 worker + koffi，看会不会炸 / 能不能抓帧
 import { Worker } from "node:worker_threads";
 console.log("runtime:", JSON.stringify({ node: process.versions.node, electron: process.versions.electron || null, modules: process.versions.modules }));
 const w = new Worker(new URL("../lib/win-backend.mjs", import.meta.url), { workerData: {} });

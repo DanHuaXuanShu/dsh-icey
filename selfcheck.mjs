@@ -175,6 +175,88 @@ console.log('\n[5] Config 解析')
   eq('steamAppId 默认 553640', normalizeConfig({}).steamAppId, '553640')
 }
 
+/* ---------- 6. 自主连玩策略 ---------- */
+console.log('\n[6] 自主连玩策略')
+{
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK } = await import('./lib/autoplay.mjs')
+
+  // 造一帧：全填同一个颜色
+  const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
+  const W = 80, H = 60
+
+  // ① analyzeFrame：同帧 → 不动
+  const a1 = analyzeFrame(mk(W, H, 100), W, H, null)
+  ok('首帧没有 motion（没有参照）', a1.ok && a1.motion === null, JSON.stringify(a1.motion))
+  const prev = { rgba: mk(W, H, 100), width: W, height: H, hud: a1.hud }
+  const a2 = analyzeFrame(mk(W, H, 100), W, H, prev)
+  ok('同两帧 → motion=0', a2.motion === 0, String(a2.motion))
+
+  // ② 完全变了 → motion 接近 1
+  const a3 = analyzeFrame(mk(W, H, 250), W, H, prev)
+  ok('整屏变化 → motion 接近 1', a3.motion > 0.9, String(a3.motion))
+
+  // ③ HUD 区域变化会体现在 hudKick 上（血条在左上那一带）
+  const hudFrame = mk(W, H, 100)
+  // HUD 区域（按比例算）填亮色
+  const hx0 = Math.floor(W * 0.03), hx1 = Math.floor(W * 0.32)
+  const hy0 = Math.floor(H * 0.08), hy1 = Math.floor(H * 0.20)
+  for (let y = hy0; y < hy1; y++) for (let x = hx0; x < hx1; x++) {
+    const i = (y * W + x) * 4
+    hudFrame[i] = 255; hudFrame[i + 1] = 255; hudFrame[i + 2] = 0
+  }
+  const a4 = analyzeFrame(hudFrame, W, H, { rgba: mk(W, H, 100), width: W, height: H, hud: a1.hud })
+  ok('HUD 变亮 → hudKick 变正', a4.hudKick > 0, String(a4.hudKick))
+
+  // ④ 边界：帧数据不完整不能崩
+  const bad = analyzeFrame(Buffer.alloc(10), 80, 60, null)
+  ok('数据不完整返回 ok:false', bad.ok === false, JSON.stringify(bad))
+
+  // ⑤ 策略：画面静止 → 不是乱走，而是「反向挪一下」或「按确认」
+  const p1 = createPolicy('advance')
+  const d1 = p1.decide({ motion: 0, hudKick: 0 }, { now: 0 })
+  ok('静止第 1 次 → 反向挪（不是继续走）', d1.action === 'move' && d1.dir === 'left', JSON.stringify(d1))
+  const d2 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2000 })
+  ok('静止第 2 次 → 按确认键', d2.action === 'interact', JSON.stringify(d2))
+  ok('连按确认不会无限刷（有节流）', p1.decide({ motion: 0, hudKick: 0 }, { now: 2100 }).action !== 'interact', 'throttled')
+
+  // ⑥ 策略：HUD 在跳 → 打架，出攻击/重击
+  const p2 = createPolicy('advance')
+  const fightMoves = []
+  for (let i = 0; i < 6; i++) fightMoves.push(p2.decide({ motion: 0.3, hudKick: FIGHT_HUDKICK + 0.05 }, { now: i * 100 }))
+  ok('在打架时只出攻击类动作', fightMoves.every((d) => ['attack', 'heavy', 'dash'].includes(d.action)), fightMoves.map((d) => d.action).join(','))
+  ok('在打架时确实会攻击', fightMoves.some((d) => d.action === 'attack'), fightMoves.map((d) => d.action).join(','))
+
+  // ⑦ 策略：正常推进 → 走右
+  const p3 = createPolicy('advance')
+  const d3 = p3.decide({ motion: 0.2, hudKick: 0 }, { now: 0 })
+  ok('正常情况会往右推进', d3.action === 'move' && d3.dir === 'right', JSON.stringify(d3))
+
+  // ⑧ 确定性：同样的输入序列 → 同样的动作序列（所以能离线单测）
+  const runSeq = (preset) => {
+    const p = createPolicy(preset)
+    return [0, 1, 2, 3, 4, 5].map((i) => p.decide({ motion: 0.2, hudKick: 0 }, { now: i * 100 }).action).join(',')
+  }
+  eq('策略是确定性的', runSeq('advance'), runSeq('advance'))
+
+  // ⑨ 三个预设都能出动作，且 fight 不出移动
+  ok('explore 存在且有描述', !!PRESETS.explore?.desc, PRESETS.explore?.desc)
+  const p4 = createPolicy('fight')
+  const fm = Array.from({ length: 4 }, (_, i) => p4.decide({ motion: 0.2, hudKick: 0 }, { now: i * 100 }).action)
+  ok('fight 预设不走路', !fm.includes('move'), fm.join(','))
+
+  // ⑩ 未知预设回落到 advance（不抛错）
+  const p5 = createPolicy('nonsense')
+  eq('未知预设回落到 advance', p5.preset, 'advance')
+
+  // ⑪ 摘要可读且包含关键信息
+  const sum = summarizeRun({ seconds: 12.3, preset: 'advance', actions: { move: 5, attack: 3 }, events: ['第 4s 进入战斗'], frames: 2, stopped: '玩满 12 秒' })
+  ok('摘要有秒数', sum.includes('12.3'), sum)
+  ok('摘要有动作统计', sum.includes('move×5'), sum)
+  ok('摘要有停止原因', sum.includes('玩满'), sum)
+  ok('摘要有截图数量', sum.includes('2 张'), sum)
+  ok('STILL_MOTION 是合理小值', STILL_MOTION > 0 && STILL_MOTION < 0.05, String(STILL_MOTION))
+}
+
 /* ---------- 汇总 ---------- */
 console.log(`\n${fails.length ? '❌' : '✅'} ${pass} 项通过，${fails.length} 项失败`)
 if (fails.length) {

@@ -1,4 +1,4 @@
-﻿import { NativeBackend } from "../lib/host.mjs";
+import { NativeBackend } from "../lib/host.mjs";
 const nb = new NativeBackend();
 const r = await nb.start();
 console.log("start:", JSON.stringify(r));

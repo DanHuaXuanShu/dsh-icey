@@ -1,4 +1,4 @@
-﻿import { GameSession } from "../lib/game.mjs";
+import { GameSession } from "../lib/game.mjs";
 import fs from "node:fs";
 const gs = new GameSession({ getConfig: () => ({}) });
 await gs.attach();

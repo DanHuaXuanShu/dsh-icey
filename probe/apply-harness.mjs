@@ -1,9 +1,9 @@
-﻿/**
+/**
  * probe/apply-harness.mjs —— 用桩 ctx 真调 index.js 的 apply()
  *
  * 验三件事：
  *   ① 激活阶段不抛（抛了整条插件不装载，DSH 只留一句 warning）
- *   ② 有 tools/attachments 时，6 个 icey_* 工具被注册（合并成一行后靠 ctx.get 探测）
+ *   ② 有 tools/attachments 时，7 个 icey_* 工具被注册（合并成一行后靠 ctx.get 探测）
  *   ③ 没有 tools/attachments 时，**只跳过工具**，路由/配置照常 —— 优雅降级
  */
 const calls = { routes: [], tools: [], effects: [], logs: [] }
@@ -69,7 +69,7 @@ try {
   console.log('\n[有 tools/attachments]')
   console.log('  路由:', calls.routes.length, '条；工具:', calls.tools.length, '个 ->', calls.tools.join(', '))
   if (calls.routes.length !== 11) { failed = true; console.log('  ❌ 路由数不对，应为 11') }
-  if (calls.tools.length !== 6) { failed = true; console.log('  ❌ 工具数不对，应为 6') }
+  if (calls.tools.length !== 7) { failed = true; console.log('  ❌ 工具数不对，应为 7') }
 } catch (e) {
   failed = true
   console.log('❌ [有 tools] apply 抛错：', e?.message)

@@ -1,4 +1,4 @@
-﻿// 量化「每帧 6MB RGBA → base64 → SSE」到底吃掉多少主线程
+// 量化「每帧 6MB RGBA → base64 → SSE」到底吃掉多少主线程
 const w = 1606, h = 935
 const buf = Buffer.alloc(w*h*4, 128)
 console.log(`一帧 RGBA: ${(buf.length/1e6).toFixed(2)} MB`)

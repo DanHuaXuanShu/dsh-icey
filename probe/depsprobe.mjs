@@ -1,4 +1,4 @@
-﻿import { loadHostDeps, candidateRoots } from "../lib/hostdeps.mjs";
+import { loadHostDeps, candidateRoots } from "../lib/hostdeps.mjs";
 const r = await loadHostDeps();
 console.log("z:", r.z ? (typeof r.z === "function" ? "ok-fn" : "ok-obj") : "NULL");
 console.log("defineTool local-fallback:", r.defineTool.name || "anonymous");

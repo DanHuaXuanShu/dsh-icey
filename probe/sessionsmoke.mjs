@@ -1,4 +1,4 @@
-﻿import { session, configure } from "../lib/session.mjs";
+import { session, configure } from "../lib/session.mjs";
 configure({ getConfig: () => ({}) });
 const s = session();
 const st = await s.status();

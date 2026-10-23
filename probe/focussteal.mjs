@@ -1,4 +1,4 @@
-﻿import { NativeBackend } from "../lib/host.mjs";
+import { NativeBackend } from "../lib/host.mjs";
 const nb = new NativeBackend();
 await nb.start();
 const dsh = 263534;

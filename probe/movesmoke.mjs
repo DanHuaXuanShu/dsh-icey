@@ -1,4 +1,4 @@
-﻿import { NativeBackend } from "../lib/host.mjs";
+import { NativeBackend } from "../lib/host.mjs";
 import { grabFrame } from "../lib/vision.mjs";
 import fs from "node:fs";
 const nb = new NativeBackend();

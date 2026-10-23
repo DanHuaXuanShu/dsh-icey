@@ -1,4 +1,4 @@
-﻿import { GameSession } from "../lib/game.mjs";
+import { GameSession } from "../lib/game.mjs";
 const gs = new GameSession({ getConfig: () => ({}) });
 await gs.attach();
 const r = await gs.act({ action: "move", dir: "right", ms: 800 }, { withDiff: true });
