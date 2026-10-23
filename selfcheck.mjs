@@ -317,7 +317,7 @@ console.log('\n[6] 自主连玩策略')
   ok('阶梯里会出现跳', kinds.includes('jump'), kinds.join(','))
   ok('阶梯里会出现攻击', kinds.includes('attack'), kinds.join(','))
   ok('不会一直只做同一个动作', new Set(kinds.filter((k) => k !== 'wait')).size >= 3, kinds.join(','))
-  ok('UNSTUCK_LADDER 是 4 步', UNSTUCK_LADDER.length === 4, JSON.stringify(UNSTUCK_LADDER))
+  ok('UNSTUCK_LADDER 是 5 步', UNSTUCK_LADDER.length === 5, JSON.stringify(UNSTUCK_LADDER))
   ok('阶梯第二下是 Enter（唯一的互动键）', UNSTUCK_LADDER[1] === 'interact', JSON.stringify(UNSTUCK_LADDER))
   ok('阶梯里不再有 J（J 只是攻击）', !UNSTUCK_LADDER.includes('j'), JSON.stringify(UNSTUCK_LADDER))
 
@@ -343,6 +343,9 @@ console.log('\n[6] 自主连玩策略')
   }
   ok('打架时会用追击（chase）', seqFight.some((d) => d.action === 'chase'), [...new Set(seqFight.map((d) => d.action))].join(','))
   ok('打架时也会闪现（dash）', seqFight.some((d) => d.action === 'dash'), [...new Set(seqFight.map((d) => d.action))].join(','))
+
+  // 阶梯最后一步必须是 Esc：万一 Enter 打开了招式升级界面（那里的 Enter 是花钱升级），Esc 能安全退出
+  ok('阶梯最后一步是 Esc（安全退出菜单）', UNSTUCK_LADDER[UNSTUCK_LADDER.length - 1] === 'escape', JSON.stringify(UNSTUCK_LADDER))
 
   // ㉑ 确认键上限：盲按 Enter 可能在菜单里选中「退出」把游戏退掉（真出过事）
   const p13 = createPolicy('advance')
