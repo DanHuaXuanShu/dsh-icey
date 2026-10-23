@@ -178,7 +178,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -255,6 +255,65 @@ console.log('\n[6] 自主连玩策略')
   ok('摘要有停止原因', sum.includes('玩满'), sum)
   ok('摘要有截图数量', sum.includes('2 张'), sum)
   ok('STILL_MOTION 是合理小值', STILL_MOTION > 0 && STILL_MOTION < 0.05, String(STILL_MOTION))
+
+  // ⑫ 没检测到 HUD（标题/加载）⇒ 按确认键，而不是继续空走 —— 2026-10-23 真机踩到的坑：
+  //    标题界面有飘雪，motion 一直 1.5~2%，光靠 motion 永远等不到"卡住"。
+  const p6 = createPolicy('advance')
+  const noHud1 = p6.decide({ motion: 0.02, hudKick: 0, hudBright: 0 }, { now: 0 })
+  ok('没有 HUD 时第一反应是按确认键', noHud1.action === 'interact', JSON.stringify(noHud1))
+  const noHud2 = p6.decide({ motion: 0.02, hudKick: 0, hudBright: 0 }, { now: 300 })
+  ok('确认键有节流，紧接着是等一等（不连点）', noHud2.action === 'wait', JSON.stringify(noHud2))
+  const noHud3 = p6.decide({ motion: 0.02, hudKick: 0, hudBright: 0 }, { now: 2000 })
+  ok('节流过后会再次按确认键', noHud3.action === 'interact', JSON.stringify(noHud3))
+
+  // ⑬ 有 HUD（在游戏里）时，同样的 motion 应该走正常推进逻辑
+  const p7 = createPolicy('advance')
+  const hasHud = p7.decide({ motion: 0.02, hudKick: 0, hudBright: 0.08 }, { now: 0 })
+  ok('检测到 HUD 时不会乱按确认键', hasHud.action !== 'interact', JSON.stringify(hasHud))
+  ok('PRESENCE_BRIGHT 是合理小值', PRESENCE_BRIGHT > 0 && PRESENCE_BRIGHT < 0.05, String(PRESENCE_BRIGHT))
+
+  // ⑭ hudBright 真的能从画面算出来（HUD 区域涂亮 → 占比升高）
+  const withBar = mk(W, H, 20)
+  for (let y = hy0; y < hy1; y++) for (let x = hx0; x < hx1; x++) {
+    const i = (y * W + x) * 4
+    withBar[i] = 255; withBar[i + 1] = 255; withBar[i + 2] = 255
+  }
+  const a5 = analyzeFrame(withBar, W, H, null)
+  const aDark = analyzeFrame(mk(W, H, 20), W, H, null)
+  ok('全亮 HUD → hudBright 接近 1', a5.hudBright > 0.9, String(a5.hudBright))
+  ok('全暗画面 → hudBright 接近 0', aDark.hudBright < 0.01, String(aDark.hudBright))
+
+  // ⑮ 原地踏步：相邻帧有 motion（待机动画），但 2.5 秒净进展为 0 ⇒ 必须当成卡住
+  //    —— 2026-10-23 真机踩到：卡在大门前，motion 一直 1.5%，策略以为在走，白按了 15 秒。
+  const p8 = createPolicy('advance')
+  const d8 = p8.decide({ motion: 0.015, hudKick: 0, hudBright: 0.08, progress: 0.01 }, { now: 0 })
+  ok('净进展为 0 时不会继续往原方向傻走', !(d8.action === 'move' && d8.dir === 'right'), JSON.stringify(d8))
+  ok('净进展为 0 时先反向挪/按确认', ['move', 'interact'].includes(d8.action) && (d8.action === 'interact' || d8.dir === 'left'), JSON.stringify(d8))
+
+  // ⑯ 有净进展时正常推进
+  const p9 = createPolicy('advance')
+  const d9 = p9.decide({ motion: 0.03, hudKick: 0, hudBright: 0.08, progress: 0.6 }, { now: 0 })
+  ok('有净进展时继续推进', d9.action === 'move' && d9.dir === 'right', JSON.stringify(d9))
+  ok('PROGRESS_MIN 是合理阈值', PROGRESS_MIN > 0.01 && PROGRESS_MIN < 0.3, String(PROGRESS_MIN))
+
+  // ⑰ 净进展缺失（null，比如刚开局还没攒够参照帧）不影响正常推进
+  const p10 = createPolicy('advance')
+  const d10 = p10.decide({ motion: 0.03, hudKick: 0, hudBright: 0.08, progress: null }, { now: 0 })
+  ok('progress 为 null 时按正常逻辑走', d10.action === 'move' && d10.dir === 'right', JSON.stringify(d10))
+
+  // ⑱ 脱困阶梯：连续卡住时要**换着法子**试，而不是一直撞同一面墙
+  const p11 = createPolicy('advance')
+  const seq = []
+  for (let i = 0; i < 8; i++) {
+    seq.push(p11.decide({ motion: 0.015, hudKick: 0, hudBright: 0.08, progress: 0.01 }, { now: i * 800 }))
+  }
+  const kinds = seq.map((d) => (d.action === 'move' ? 'back' : d.action === 'heavy' ? 'attack' : d.action))
+  ok('阶梯里第一下是退一步', kinds[0] === 'back', kinds.join(','))
+  ok('阶梯里会出现按确认', kinds.includes('interact'), kinds.join(','))
+  ok('阶梯里会出现跳', kinds.includes('jump'), kinds.join(','))
+  ok('阶梯里会出现攻击', kinds.includes('attack'), kinds.join(','))
+  ok('不会一直只做同一个动作', new Set(kinds.filter((k) => k !== 'wait')).size >= 3, kinds.join(','))
+  ok('UNSTUCK_LADDER 是 4 步', UNSTUCK_LADDER.length === 4, JSON.stringify(UNSTUCK_LADDER))
 }
 
 /* ---------- 汇总 ---------- */

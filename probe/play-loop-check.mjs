@@ -14,7 +14,11 @@ import { GameSession } from '../lib/game.mjs'
 
 const W = 96, H = 64
 
-/** 造一帧合成画面；seed 变化 ⇒ 画面在动 */
+/**
+ * 造一帧合成画面；seed 变化 ⇒ 画面在动。
+ * 同时**涂一块明亮的 HUD**（左上角），否则策略会判定"还没进游戏"而只按确认键 ——
+ * 那测的就不是推进逻辑了。
+ */
 function makeFrame(seed) {
   const buf = Buffer.alloc(W * H * 4, 40)
   for (let i = 0; i < buf.length; i += 4) {
@@ -23,6 +27,15 @@ function makeFrame(seed) {
     buf[i + 1] = (px * 3 + seed * 7) % 256
     buf[i + 2] = (px * 5 + seed * 11) % 256
     buf[i + 3] = 255
+  }
+  // HUD 区域（跟 autoplay.HUD_BOX 一致：x 3%~32%，y 8%~20%）涂亮
+  const hx0 = Math.floor(W * 0.03), hx1 = Math.floor(W * 0.32)
+  const hy0 = Math.floor(H * 0.08), hy1 = Math.floor(H * 0.20)
+  for (let y = hy0; y < hy1; y++) {
+    for (let x = hx0; x < hx1; x++) {
+      const i = (y * W + x) * 4
+      buf[i] = 230; buf[i + 1] = 250; buf[i + 2] = 255   // 亮青，跟血条一个调
+    }
   }
   return buf
 }
