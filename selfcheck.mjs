@@ -457,6 +457,15 @@ console.log('\n[6] 自主连玩策略')
   ok('正常画面不会被当成菜单', dPlay2.action !== 'pause', JSON.stringify(dPlay2))
   ok('菜单阈值来自实测范围', MENU_LIST_BANDS >= 8 && MENU_DARK_RATIO > 0.85, `${MENU_LIST_BANDS}/${MENU_DARK_RATIO}`)
 
+  // ㉖d 分阶段连招（取消衔接，来自 BV1314y1k7Zy 的技巧演示）
+  const { planAction: planPhase } = await import('./lib/control.mjs')
+  const ph = planPhase({ action: 'combo', keys: 'jjji|s+j' }, {})
+  ok('分阶段连招生成了 4 点按 + 1 按住', ph.steps.length === 5 && !!ph.steps[4].withSteps, JSON.stringify(ph.steps.map((s) => (s.withSteps ? 'HOLD:' + s.key : s.key))))
+  ok('分阶段描述写明了', /分阶段/.test(ph.desc || ''), ph.desc)
+  const dashCombo = planPhase({ action: 'combo', keys: 'jo' }, {})
+  ok('刺击闪可以表达（J→O）', dashCombo.steps.length === 2 && dashCombo.steps[1].key === 'o', JSON.stringify(dashCombo.steps.map((s) => s.key)))
+  ok('取消衔接类连招在表里', COMBOS.some((c) => c.includes('|')) && COMBOS.includes('jo'), JSON.stringify(COMBOS.filter((c) => c.includes('|'))))
+
   // ㊵ 连段权重：依据社区实战经验（磁阱最高、荡涤最低）
   ok('每条连段都有权重', COMBOS.every((c) => typeof COMBO_WEIGHTS[c] === 'number'), JSON.stringify(COMBOS.filter((c) => typeof COMBO_WEIGHTS[c] !== 'number')))
   ok('权重表里没有多余条目', Object.keys(COMBO_WEIGHTS).every((k) => COMBOS.includes(k)), JSON.stringify(Object.keys(COMBO_WEIGHTS).filter((k) => !COMBOS.includes(k))))
@@ -582,7 +591,7 @@ console.log('\n[6] 自主连玩策略')
   ok('分析帧宽度会被钳制', cfgMod.normalizeConfig({ analysisWidth: 9999 }).analysisWidth === 800 && cfgMod.normalizeConfig({ analysisWidth: 1 }).analysisWidth === 320, '')
 
   // ㉗ 连段：出招表来自游戏内招式表，打架时真的会打出来
-  ok('连段表非空且都是合法键（含 a/d 与组合符 +）', COMBOS.length >= 5 && COMBOS.every((c) => /^[jilu89wsad+]+$/.test(c)), JSON.stringify(COMBOS))
+  ok('连段表非空且都是合法键（含 a/d、o、组合符 + 与分阶段 |）', COMBOS.length >= 5 && COMBOS.every((c) => /^[jilu89wsado+|]+$/.test(c)), JSON.stringify(COMBOS))
   const pComb = createPolicy('advance')
   let sawCombo = null
   for (let i = 0; i < 40; i++) {
@@ -590,7 +599,7 @@ console.log('\n[6] 自主连玩策略')
     if (d.action === 'combo') { sawCombo = d; break }
   }
   ok('打架时会打出连段', !!sawCombo, sawCombo ? JSON.stringify(sawCombo) : '40 次决策里没出现 combo')
-  if (sawCombo) ok('连段带上了键序列', /^[jilu89wsad+]+$/.test(sawCombo.keys || ''), String(sawCombo.keys))
+  if (sawCombo) ok('连段带上了键序列', /^[jilu89wsado+|]+$/.test(sawCombo.keys || ''), String(sawCombo.keys))
 
   // ㉒ 确认键上限：盲按 Enter 可能在菜单里选中「退出」把游戏退掉（真出过事）
   const p13 = createPolicy('advance')
