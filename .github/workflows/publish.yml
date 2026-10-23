@@ -53,6 +53,11 @@ jobs:
       - name: 升级 npm
         run: npm install -g npm@latest && npm --version
 
+      # 第一道门禁：**绝不能把密钥发到公开仓库 / 公开包**
+      # 2026 年 GitHub 上硬编码密钥大面积泄漏，最常见就是 .env 被一起推上去。
+      - name: 密钥扫描（工作区 + git 历史）
+        run: node probe/secret-scan.mjs --history
+
       # 这个包是**零依赖**，不需要 npm install；直接跑自检和探针当门禁。
       - name: 自检（47 项）
         run: node selfcheck.mjs

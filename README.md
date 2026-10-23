@@ -258,16 +258,46 @@ node selfcheck.mjs
 
 ---
 
+## 安全：这个仓库是公开的
+
+仓库和 npm 包都是公开的，所以**绝不能把密钥带进来**。
+2026 年 GitHub 上大面积出现硬编码 API key 泄漏（AI 服务的 key 同比 +81%），
+最常见的原因就是 `.env` / `config.json` 被 `git add -A` 一起推了上去。
+
+这个仓库为此做了三道防线：
+
+1. **`.gitignore`** 覆盖 `.env*`、`*.pem`、`*.key`、`.npmrc`、`*.tgz`、`*.log`
+2. **`probe/secret-scan.mjs`**：扫工作区 + git 历史里的密钥特征
+   ```bash
+   node probe/secret-scan.mjs            # 工作区
+   node probe/secret-scan.mjs --history  # 连 git 历史一起
+   node probe/secret-scan.mjs --all      # 含被 gitignore 的目录（本机自查）
+   ```
+3. **两道自动闸门**：`npm publish` 前会跑一次（`prepublishOnly`），
+   GitHub Actions 发布前也会跑一次（扫历史）—— 命中就直接失败，不会发出去
+
+> 记住那条铁律：**key 一旦推到公开仓库，就当作已经泄露**。
+> 光删文件没用（历史里还在），必须去服务商后台作废并重新生成。
+
+扫出来的东西如果真的推上去了，处理顺序是：
+轮换密钥 → 用 `git filter-repo` 清历史 → 强制推送 → 通知所有协作者重新克隆。
+
+---
+
 ## 排错用的探针
 
 `probe/` 下每个脚本都是能直接跑的，不需要 DSH：
 
 ```bash
+node probe/secret-scan.mjs       # 密钥扫描（工作区 / --history / --all）
 node probe/schema-check.mjs      # 6 个工具的 schema 是否合法 JSON Schema
 node probe/client-check.mjs      # 客户端自注册 / slot / 二进制帧解析
 node probe/tool-check.mjs        # 真调 6 个工具（抓帧 + 按键都是真的）
 node probe/stream-route-check.mjs # 跑真 /stream 路由，量与帧率
 node probe/config-check.mjs      # 配置持久化往返
 ```
+
+一键跑全部本地检查：`npm.cmd run check`
+
 
 MIT

@@ -25,6 +25,12 @@
     "./icon": "./icon.svg"
   },
   "main": "./index.js",
+  "scripts": {
+    "selfcheck": "node selfcheck.mjs",
+    "check": "node selfcheck.mjs && node probe/schema-check.mjs && node probe/client-check.mjs && node probe/apply-harness.mjs",
+    "scan:secrets": "node probe/secret-scan.mjs",
+    "prepublishOnly": "node probe/secret-scan.mjs"
+  },
   "files": [
     "index.js",
     "agent.js",
