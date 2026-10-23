@@ -28,6 +28,13 @@ function makeFrame(seed) {
     buf[i + 2] = (px * 5 + seed * 11) % 256
     buf[i + 3] = 255
   }
+  // 底部那条（旁白/字幕检测区）涂暗：假画面不该被当成"旁白在说话"
+  const sx0 = Math.floor(W * 0.12), sx1 = Math.floor(W * 0.88)
+  const sy0 = Math.floor(H * 0.70), sy1 = Math.floor(H * 0.95)
+  for (let y = sy0; y < sy1; y++) for (let x = sx0; x < sx1; x++) {
+    const i = (y * W + x) * 4
+    buf[i] = 30; buf[i + 1] = 30; buf[i + 2] = 30
+  }
   // HUD 区域（跟 autoplay.HUD_BOX 一致：x 3%~32%，y 8%~20%）涂亮
   const hx0 = Math.floor(W * 0.03), hx1 = Math.floor(W * 0.32)
   const hy0 = Math.floor(H * 0.08), hy1 = Math.floor(H * 0.20)

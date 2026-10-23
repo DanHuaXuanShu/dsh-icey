@@ -178,7 +178,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -227,7 +227,7 @@ console.log('\n[6] 自主连玩策略')
   const p2 = createPolicy('advance')
   const fightMoves = []
   for (let i = 0; i < 6; i++) fightMoves.push(p2.decide({ motion: 0.3, hudKick: FIGHT_HUDKICK + 0.05 }, { now: i * 100 }))
-  ok('在打架时只出攻击类动作', fightMoves.every((d) => ['attack', 'heavy', 'dash'].includes(d.action)), fightMoves.map((d) => d.action).join(','))
+  ok('在打架时只出攻击类动作', fightMoves.every((d) => ['attack', 'heavy', 'dash', 'chase', 'execute', 'storm', 'shade'].includes(d.action)), fightMoves.map((d) => d.action).join(','))
   ok('在打架时确实会攻击', fightMoves.some((d) => d.action === 'attack'), fightMoves.map((d) => d.action).join(','))
 
   // ⑦ 策略：正常推进 → 走右
@@ -360,6 +360,31 @@ console.log('\n[6] 自主连玩策略')
   const dN = pN.decide({ motion: 0.015, hudKick: 0, hudBright: 0.08, progress: 0.01, promptBright: 0.0002 }, { now: 0 })
   ok('提示框信号很弱时不盲按 Enter', dN.action !== 'interact', JSON.stringify(dN))
   ok('PROMPT_MIN 落在实测区间内', PROMPT_MIN > 0.0001 && PROMPT_MIN < 0.002, String(PROMPT_MIN))
+
+  // ㉓ 行动权重：确定性 + 每个 preset 的权重表都存在
+  ok('pickWeighted 是确定性的', pickWeighted(ACTION_WEIGHTS.fight, 42) === pickWeighted(ACTION_WEIGHTS.fight, 42), '')
+  ok('advance/explore/fight 都有权重表', !!(ACTION_WEIGHTS.advance && ACTION_WEIGHTS.fight && ACTION_WEIGHTS.explore), Object.keys(ACTION_WEIGHTS).join(','))
+  ok('战斗权重里没有 move（打架不该走路）', !ACTION_WEIGHTS.fight.move, JSON.stringify(ACTION_WEIGHTS.fight))
+  const spread = new Set()
+  for (let i = 0; i < 200; i++) spread.add(pickWeighted(ACTION_WEIGHTS.explore, i))
+  ok('探索权重能出多种动作（有变化）', spread.size >= 3, [...spread].join(','))
+
+  // ㉔ 跟随旁白：字幕出现时先按确认把话听完，而不是继续乱跑
+  const pNar = createPolicy('advance')
+  // 连续两帧都有字幕才按（第一帧先等，滤掉一闪而过的亮光误判）
+  const dNar0 = pNar.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, subtitle: 0.05 }, { now: 0 })
+  ok('旁白第一帧先等一下（不急着按）', dNar0.action === 'wait', JSON.stringify(dNar0))
+  const dNar = pNar.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, subtitle: 0.05 }, { now: 900 })
+  ok('旁白连续出现时按确认键', dNar.action === 'interact', JSON.stringify(dNar))
+  ok('旁白的理由写明了', /旁白/.test(dNar.why || ''), dNar.why)
+  ok('SUBTITLE_MIN 是合理阈值', SUBTITLE_MIN > 0.005 && SUBTITLE_MIN < 0.1, String(SUBTITLE_MIN))
+
+  // ㉕ 探索：会掉头换方向扫图（找宝箱/彩蛋）
+  const pExp = createPolicy('explore')
+  const seqExp = []
+  for (let i = 0; i < 40; i++) seqExp.push(pExp.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5 }, { now: i * 400 }))
+  ok('探索时会掉头换方向', seqExp.some((d) => /掉头/.test(d.why || '')), [...new Set(seqExp.map((d) => d.action))].join(','))
+  ok('探索时会对可疑位置砍一刀', seqExp.some((d) => /可疑/.test(d.why || '')), '')
 
   // ㉒ 确认键上限：盲按 Enter 可能在菜单里选中「退出」把游戏退掉（真出过事）
   const p13 = createPolicy('advance')
