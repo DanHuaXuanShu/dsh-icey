@@ -33,12 +33,13 @@ const textOutput = {
   render: (_args, value) => text(typeof value === 'string' ? value : JSON.stringify(value, null, 2)),
 }
 
-/** 文字 + 截图的输出：render 里按需取 value.text / value.image */
+/** 文字 + 截图的输出：render 里按需取 value.text / value.image / value.extraImage */
 const imageOutput = {
   schema: { type: 'object', properties: {}, additionalProperties: true },
   render: (_args, value) => [
     ...text(value?.text ?? ''),
     ...(value?.image ? [{ type: 'image', attachment: value.image }] : []),
+    ...(value?.extraImage ? [{ type: 'image', attachment: value.extraImage }] : []),
   ],
 }
 
@@ -385,19 +386,31 @@ export function apply(ctx) {
       // 一次调用只带一张图（第一张）进消息，其余提示可用 frames 数量说明——
       // 多图很吃 token，而这一轮的主要信息在摘要里。
       let image = null
+      let extraImage = null
       if (res.frames?.length) {
         try {
           const refs = await ctx.attachments.saveImages(
-            res.frames.map((f, i) => ({ data: f.png, mediaType: 'image/png', name: `icey-play-${i + 1}` })),
+            res.frames.map((f, i) => ({
+              data: f.png,
+              mediaType: 'image/png',
+              name: `icey-play-${i + 1}-${f.reason || 'periodic'}`,
+            })),
           )
           image = refs[0] || null
-          if (refs.length > 1) lines.push(`（另外还留了 ${refs.length - 1} 张，需要看的话用 icey_look 单独取）`)
+          // 第二张是「交互提示区」的原分辨率裁图：模型可以直接读上面的字，
+          // 判断该按哪个键（比像素阈值猜可靠得多）
+          const promptIdx = res.frames.findIndex((f) => f.reason === 'prompt')
+          if (promptIdx >= 0) {
+            extraImage = refs[promptIdx] || null
+            lines.push('（第二张图是**交互提示区**的原分辨率裁图 —— 上面若有提示文字，直接读它决定按什么键）')
+          }
+          if (refs.length > 2) lines.push(`（另外还留了 ${refs.length - 2} 张，需要看的话用 icey_look 单独取）`)
         } catch (e) {
           lines.push(`（途中截图没存成：${e?.message || e}）`)
         }
       }
       lines.push('下一步：看截图判断进展；要继续就再调一次 icey_play，想精确操作就 icey_act。')
-      return { text: lines.join('\n'), image }
+      return { text: lines.join('\n'), image, extraImage }
     },
   })
 

@@ -258,6 +258,9 @@ console.log('\n[6] 自主连玩策略')
   ok('摘要有动作统计', sum.includes('move×5'), sum)
   ok('摘要有停止原因', sum.includes('玩满'), sum)
   ok('摘要有截图数量', sum.includes('2 张'), sum)
+  // play() 返回的是**数组**，summarizeRun 不能把它插值成 [object Object]
+  const sum2 = summarizeRun({ seconds: 5, preset: 'advance', actions: { move: 1 }, events: [], frames: [{}, {}], stopped: '玩满 5 秒' })
+  ok('frames 是数组时也说对话', sum2.includes('2 张') && !sum2.includes('[object'), sum2)
   ok('STILL_MOTION 是合理小值', STILL_MOTION > 0 && STILL_MOTION < 0.05, String(STILL_MOTION))
 
   // ⑫ 没检测到 HUD（标题/加载）⇒ 按确认键，而不是继续空走 —— 2026-10-23 真机踩到的坑：

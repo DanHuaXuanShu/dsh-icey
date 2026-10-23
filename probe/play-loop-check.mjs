@@ -120,6 +120,8 @@ console.log('\n[2] 画面冻住 → 按确认关，然后自己停下（不死�
   ok('按过确认键', (res.actions?.interact || 0) > 0, JSON.stringify(res.actions))
   ok('判定走不通时带了「现场图」', res.blocked === true, JSON.stringify({ blocked: res.blocked }))
   ok('现场图排在第一位', res.frames?.[0]?.reason === 'blocked', JSON.stringify(res.frames?.map(f => f.reason || 'periodic')))
+  ok('同时裁了「交互提示区」交给模型读字', res.promptSeen === true, JSON.stringify({ promptSeen: res.promptSeen }))
+  ok('提示区裁图排在第二位', res.frames?.[1]?.reason === 'prompt', JSON.stringify(res.frames?.map(f => f.reason || 'periodic')))
   ok('结束后没有按住的键', s.backend.held.length === 0, s.backend.held.join(','))
   ok('playing 状态已清空', s.playing === null, String(s.playing))
   console.log('    动作:', JSON.stringify(res.actions), '| 停止:', res.stopped)
