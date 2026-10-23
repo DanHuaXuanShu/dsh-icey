@@ -74,6 +74,9 @@ function makeBackend({ frozen = false, found = true } = {}) {
     },
     async keydown(k) { held.add(k); keys.push(['down', k]); return { ok: true } },
     async keyup(k) { held.delete(k); keys.push(['up', k]); return { ok: true } },
+    // 按下顺序（给组合键回归用）
+    get rawKeys() { return keys },
+    get executed() { return keys.filter(([,]) => true).map(([dir, k]) => k) },
     async releaseAll() { held = new Set(); return { ok: true, released: [] } },
     async dispose() { return true },
   }
@@ -111,7 +114,28 @@ console.log('\n[1] 画面在动 → 自主推进')
   ok('playing 状态已清空', s.playing === null, String(s.playing))
   ok('焦点还原字段已清空', s.pendingRestoreHwnd === 0, String(s.pendingRestoreHwnd))
   ok('有途中截图或明确没有', (res.frames?.length ?? 0) >= 0, '')
+  ok('带回了动作历史', Array.isArray(res.history) && res.history.length > 0, JSON.stringify(res.history?.slice(-2)))
+  ok('历史条目有时间和动作', res.history?.every((h) => typeof h.t === 'number' && typeof h.action === 'string'), '')
   console.log('    动作:', JSON.stringify(res.actions), '| 停止:', res.stopped)
+}
+
+/* ---------- ①b 组合键（按住方向 + 点按）真的能执行完 ---------- */
+console.log('\n[1b] 组合键 s+j（按住↓期间点J）能执行完、不留按键')
+{
+  const s = makeSession({ frozen: false })
+  await s.act({ action: 'combo', keys: 's+j' })
+  // act() 只是入队，真正的按键由内部队列异步执行 —— 等整段按完（按住键都松开）
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline) {
+    const n = s.backend.rawKeys?.length ?? 0
+    if (n >= 4 && s.backend.held.length === 0) break
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  const steps = s.backend.executed || []
+  ok('组合键被执行', steps.length > 0, JSON.stringify(steps))
+  ok('主键与子键都出现过', steps.includes('s') && steps.includes('j'), steps.join(','))
+  ok('组合键结束后没有残留按键', s.backend.held.length === 0, s.backend.held.join(','))
+  console.log('    实际按键序列:', steps.join(' → '))
 }
 
 /* ---------- ② 画面冻住：应该按确认，然后自己停 ---------- */

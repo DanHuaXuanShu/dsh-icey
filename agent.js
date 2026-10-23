@@ -381,6 +381,7 @@ export function apply(ctx) {
       captureEvery: { type: 'integer', description: '每隔几秒留一张途中截图（默认 12）' },
       maxFrames: { type: 'integer', description: '最多留几张截图（0–4，默认 3；每张都花 token）' },
       dir: { type: 'string', description: '推进方向 right / left，默认 right' },
+      historyLen: { type: 'integer', description: '带回来多少条「最近动作」历史（0–20，默认 8；0 = 不带）' },
     },
     output: imageOutput,
     async execute(args) {
@@ -395,12 +396,23 @@ export function apply(ctx) {
         captureEvery: args.captureEvery,
         maxFrames: args.maxFrames,
         dir: args.dir,
+        historyLen: args.historyLen,
       })
       if (!res.ok) {
         return { text: `连玩没开始：${res.error}\n下一步：icey_status 看能不能操作，或 icey_start 先接上。`, image: null }
       }
 
       const lines = [summarizeRun(res)]
+      // 最近动作历史（参考 GameScaling 的 history_len）：让模型跨调用也能接上上文
+      if (Array.isArray(res.history) && res.history.length) {
+        const tail = res.history.slice(-6).map((h) => {
+          const what = h.action === 'combo' && h.keys ? `连段 ${h.keys.toUpperCase()}` : h.action
+          const dir = h.dir ? ` ${h.dir}` : ''
+          const why = h.why ? ` — ${h.why}` : ''
+          return `${h.t}s ${what}${dir}${why}`
+        })
+        lines.push('最近动作：', ...tail.map((t) => `  · ${t}`))
+      }
       // 一次调用只带一张图（第一张）进消息，其余提示可用 frames 数量说明——
       // 多图很吃 token，而这一轮的主要信息在摘要里。
       let image = null

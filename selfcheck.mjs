@@ -536,8 +536,27 @@ console.log('\n[6] 自主连玩策略')
   }
   ok('不再有「对可疑位置盲砍」', blind === 0, String(blind))
 
-  // ㉖ 连段：出招表来自游戏内招式表，打架时真的会打出来
-  ok('连段表非空且都是合法键', COMBOS.length >= 5 && COMBOS.every((c) => /^[jilu89ws]+$/.test(c)), JSON.stringify(COMBOS))
+  // ㉖b 组合键（hold + tap）：凝滞 ↓+J / 激发 ↑+J 必须"按住方向期间点 J"
+  //     串行写法游戏收不到，这是从 GameScaling 的「时间切片动作」得到启发后修的 bug
+  const { planAction: planCombo } = await import('./lib/control.mjs')
+  const holdCombo = planCombo({ action: 'combo', keys: 's+j' }, {})
+  ok('s+j → 1 个按住步', holdCombo.steps.length === 1, JSON.stringify(holdCombo.steps.map((s) => s.key)))
+  ok('s+j 的主键是方向键', holdCombo.steps[0].key === 's', holdCombo.steps[0].key)
+  ok('s+j 带子键序列', Array.isArray(holdCombo.steps[0].withSteps) && holdCombo.steps[0].withSteps.length === 1, JSON.stringify(holdCombo.steps[0].withSteps))
+  ok('s+j 主键按住时长盖住子键', holdCombo.steps[0].holdMs >= holdCombo.steps[0].withSteps[0].holdMs, String(holdCombo.steps[0].holdMs))
+  const holdThree = planCombo({ action: 'combo', keys: 'a+jjj' }, {})
+  ok('a+jjj → 3 个子键', holdThree.steps.length === 1 && holdThree.steps[0].withSteps.length === 3, JSON.stringify(holdThree.steps[0].withSteps?.map((s) => s.key)))
+  const unknownCombo = planCombo({ action: 'combo', keys: 's+x+j' }, {})
+  ok('不认识的按键被忽略且理由里说明', /忽略/.test(unknownCombo.desc || '') && unknownCombo.steps.length === 1, unknownCombo.desc)
+  ok('连段表里至少有 2 条组合键（凝滞/激发）', COMBOS.filter((c) => c.includes('+')).length >= 2, JSON.stringify(COMBOS))
+
+  // ㉖c 多轮历史配置与分段分析帧（对齐 GameScaling 的 history_len / image_size）
+  const cfgMod = await import('./lib/config.mjs')
+  ok('分析帧宽度有默认值', cfgMod.DEFAULTS.analysisWidth >= 320 && cfgMod.DEFAULTS.analysisWidth <= 800, String(cfgMod.DEFAULTS.analysisWidth))
+  ok('分析帧宽度会被钳制', cfgMod.normalizeConfig({ analysisWidth: 9999 }).analysisWidth === 800 && cfgMod.normalizeConfig({ analysisWidth: 1 }).analysisWidth === 320, '')
+
+  // ㉗ 连段：出招表来自游戏内招式表，打架时真的会打出来
+  ok('连段表非空且都是合法键（含 a/d 与组合符 +）', COMBOS.length >= 5 && COMBOS.every((c) => /^[jilu89wsad+]+$/.test(c)), JSON.stringify(COMBOS))
   const pComb = createPolicy('advance')
   let sawCombo = null
   for (let i = 0; i < 40; i++) {
@@ -545,7 +564,7 @@ console.log('\n[6] 自主连玩策略')
     if (d.action === 'combo') { sawCombo = d; break }
   }
   ok('打架时会打出连段', !!sawCombo, sawCombo ? JSON.stringify(sawCombo) : '40 次决策里没出现 combo')
-  if (sawCombo) ok('连段带上了键序列', /^[jilu89ws]+$/.test(sawCombo.keys || ''), String(sawCombo.keys))
+  if (sawCombo) ok('连段带上了键序列', /^[jilu89wsad+]+$/.test(sawCombo.keys || ''), String(sawCombo.keys))
 
   // ㉒ 确认键上限：盲按 Enter 可能在菜单里选中「退出」把游戏退掉（真出过事）
   const p13 = createPolicy('advance')
