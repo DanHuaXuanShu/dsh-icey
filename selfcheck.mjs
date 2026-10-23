@@ -178,7 +178,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, createChestTracker } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -415,6 +415,24 @@ console.log('\n[6] 自主连玩策略')
   const envSeam = analyzeEnvironment(withSeam, EW, EH)
   ok('竖直接缝：检测到环境异常', envSeam.seam >= SEAM_DIFF, JSON.stringify(envSeam))
   ok('接缝有横向位置', envSeam.seamX > 0.3 && envSeam.seamX < 0.7, String(envSeam.seamX))
+
+  // ㉙ 宝箱靠「持续性」确认（用户纠正：连钱符号都是蓝的，没有金色可用）
+  const tk1 = createChestTracker()
+  const flash = [0, 300, 600].map((ms) => tk1.feed({ chest: 3, chestX: 0.5 }, ms)).filter(Boolean)
+  ok('一闪而过的蓝色（特效）不算宝箱', flash.length === 0, String(flash.length))
+  const tk2 = createChestTracker()
+  const persist = [0, 600, 1200, 1800, 2400].map((ms) => tk2.feed({ chest: 3, chestX: 0.5 }, ms)).filter(Boolean)
+  ok('持续在同一个位置 → 确认是宝箱', persist.length > 0, String(persist.length))
+  ok('确认的宝箱带横向位置', persist.length > 0 && Math.abs(persist[0].x - 0.5) < 0.05, JSON.stringify(persist[0]))
+  const tk3 = createChestTracker()
+  const jumpy = [0.2, 0.7, 0.35, 0.8].map((x, i) => tk3.feed({ chest: 3, chestX: x }, i * 600)).filter(Boolean)
+  ok('位置乱跳的（特效）不算宝箱', jumpy.length === 0, String(jumpy.length))
+
+  // 策略：确认宝箱后要过去开它（而不是继续乱走）
+  const pChest = createPolicy('explore')
+  const dChest = pChest.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, chestConfirmed: true, chestX: 0.85, chestAgeMs: 2000 }, { now: 0 })
+  ok('宝箱在右侧 → 朝它走', dChest.action === 'move' && dChest.dir === 'right', JSON.stringify(dChest))
+  ok('开宝箱的理由写明了', /宝箱/.test(dChest.why || ''), dChest.why)
 
   // 策略层：看见可破坏物就朝它走/打；看见接缝就停下观察（不瞎砍）
   const pEnvFar = createPolicy('explore')
