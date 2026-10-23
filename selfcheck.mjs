@@ -456,10 +456,15 @@ console.log('\n[6] 自主连玩策略')
   const dNear = pEnvNear.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, destructible: 3, destructibleX: 0.5 }, { now: 0 })
   ok('可破坏物在跟前 → 打它', dNear.action === 'attack', JSON.stringify(dNear))
   ok('打可破坏物的理由说清了', /可破坏物/.test(dNear.why || ''), dNear.why)
+  // 隐藏房间（宝箱都在里面）⇒ 接缝 = 入口候选，要过去试探而不是站着看
   const pSeam = createPolicy('explore')
-  const dSeam = pSeam.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, seam: 40, seamX: 0.45 }, { now: 0 })
-  ok('看到接缝先停下观察（不瞎砍）', dSeam.action === 'wait', JSON.stringify(dSeam))
-  ok('接缝的理由提到隐藏入口', /隐藏入口|环境异常/.test(dSeam.why || ''), dSeam.why)
+  const dSeamFar = pSeam.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, seam: 40, seamX: 0.8 }, { now: 0 })
+  ok('接缝在右侧 → 走过去', dSeamFar.action === 'move' && dSeamFar.dir === 'right', JSON.stringify(dSeamFar))
+  ok('接缝的理由提到隐藏房间', /隐藏房间/.test(dSeamFar.why || ''), dSeamFar.why)
+  const pSeam2 = createPolicy('explore')
+  const dSeamNear = pSeam2.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, seam: 40, seamX: 0.5 }, { now: 0 })
+  ok('贴到接缝 → 打一下试探暗门', dSeamNear.action === 'attack', JSON.stringify(dSeamNear))
+  ok('试探的理由提到暗门', /暗门/.test(dSeamNear.why || ''), dSeamNear.why)
 
   // 没有可破坏物/接缝时，探索不会平白无故挥刀
   const pNoProbe = createPolicy('explore')
