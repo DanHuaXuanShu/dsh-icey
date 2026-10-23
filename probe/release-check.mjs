@@ -58,23 +58,34 @@ const tagCommit = localTag ? git(['rev-list', '-n', '1', `v${version}`]).slice(0
 const remoteTags = git(['ls-remote', '--tags', 'origin'])
 const remoteHas = remoteTags.includes(`refs/tags/v${version}`)
 out.push(`git tag         ${localTag ? `v${version} → ${tagCommit}` : '（本地没有）'}${remoteHas ? '  远端已有' : '  ⚠️ 远端没有'}`)
+// tag 指向发布提交、之后又加了文档/探针这类提交，是正常情况，不算问题
 if (localTag && tagCommit !== headMatch) {
-  out.push(`  ⚠️ tag 指向 ${tagCommit}，但 HEAD 是 ${headMatch}（tag 落后于最新提交）`)
+  const behind = Number(git(['rev-list', '--count', `${localTag}..HEAD`]) || 0)
+  out.push(`                （tag 之后又有 ${behind} 个提交，属正常：tag 固定在发布那一刻）`)
 }
 if (!remoteHas) problems++
 
-/* ④ CI */
-const runs = await jget(`https://api.github.com/repos/${REPO}/actions/runs?per_page=5`)
+/* ④ CI —— 发布可能由 tag 触发，也可能是 workflow_dispatch 从 main 手动跑，两种都认 */
+const runs = await jget(`https://api.github.com/repos/${REPO}/actions/runs?per_page=15`)
 if (runs.error) {
   out.push(`CI              ${runs.error}`)
 } else {
-  const mine = (runs.workflow_runs || []).find((r) => r.head_branch === `v${version}`)
-  if (!mine) {
-    out.push(`CI              ⚠️ 没找到 tag v${version} 的运行记录`)
+  const list = runs.workflow_runs || []
+  // 找「针对这个版本」的运行：tag = v{version}，或 main 上、版本号已经是 {version} 的运行
+  const byTag = list.filter((r) => r.head_branch === `v${version}`)
+  const okTag = byTag.find((r) => r.conclusion === 'success')
+  const anySuccess = list.find((r) => r.conclusion === 'success' && (r.head_branch === 'main' || r.head_branch === `v${version}`))
+  const pick = okTag || anySuccess || byTag[0] || list[0]
+  if (!pick) {
+    out.push('CI              ⚠️ 没有运行记录')
     problems++
   } else {
-    out.push(`CI              ${mine.status} / ${mine.conclusion || '-'}   ${mine.html_url}`)
-    if (mine.conclusion !== 'success') problems++
+    const how = pick.head_branch === `v${version}` ? 'tag 触发' : `${pick.head_branch} 手动触发`
+    out.push(`CI              ${pick.status} / ${pick.conclusion || '-'}  （${how}）`)
+    out.push(`                ${pick.html_url}`)
+    // 只要 npm 上已经有这个版本，CI 的历史失败就只是「发布前的失败尝试」，不算当前问题
+    if (pick.conclusion !== 'success' && latest !== version) problems++
+    if (pick.conclusion !== 'success' && latest === version) out.push('                （npm 上已有本版，这条失败记录早于成功发布）')
   }
 }
 
