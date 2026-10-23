@@ -374,7 +374,11 @@ console.log('\n[6] 自主连玩策略')
   // ㉓ 行动权重：确定性 + 每个 preset 的权重表都存在
   ok('pickWeighted 是确定性的', pickWeighted(ACTION_WEIGHTS.fight, 42) === pickWeighted(ACTION_WEIGHTS.fight, 42), '')
   ok('advance/explore/fight 都有权重表', !!(ACTION_WEIGHTS.advance && ACTION_WEIGHTS.fight && ACTION_WEIGHTS.explore), Object.keys(ACTION_WEIGHTS).join(','))
-  ok('战斗权重里仍有足够闪避（≥3）', ACTION_WEIGHTS.fight.dash >= 3, JSON.stringify(ACTION_WEIGHTS.fight))
+    const fightTotal = Object.values(ACTION_WEIGHTS.fight).reduce((a, b) => a + b, 0)
+  const atkShare = (ACTION_WEIGHTS.fight.combo + ACTION_WEIGHTS.fight.heavy + ACTION_WEIGHTS.fight.attack) / fightTotal
+  const moveShare = (ACTION_WEIGHTS.fight.dash + ACTION_WEIGHTS.fight.chase + (ACTION_WEIGHTS.fight.move || 0)) / fightTotal
+  ok('战斗时攻击占比 ≥70%（用户要求攻击欲望高）', atkShare >= 0.7, (atkShare * 100).toFixed(1) + '%')
+  ok('战斗时位移占比 ≤10%（用户要求减少位移）', moveShare <= 0.1, (moveShare * 100).toFixed(1) + '%')
   const spread = new Set()
   for (let i = 0; i < 200; i++) spread.add(pickWeighted(ACTION_WEIGHTS.explore, i))
   ok('探索权重能出多种动作（有变化）', spread.size >= 3, [...spread].join(','))
@@ -439,8 +443,8 @@ console.log('\n[6] 自主连玩策略')
   ok('处决之后 → 长按 J 吸收超载', dOver.action === 'overload', JSON.stringify(dOver))
 
   // ㊳ 权重：连段/重击优先级提高（用户要求）
-  ok('连段权重最高', ACTION_WEIGHTS.fight.combo >= 8, JSON.stringify(ACTION_WEIGHTS.fight))
-  ok('重击权重至少 5', ACTION_WEIGHTS.fight.heavy >= 5, JSON.stringify(ACTION_WEIGHTS.fight))
+  ok('连段权重最高', ACTION_WEIGHTS.fight.combo >= 10, JSON.stringify(ACTION_WEIGHTS.fight))
+  ok('重击权重至少 6', ACTION_WEIGHTS.fight.heavy >= 6, JSON.stringify(ACTION_WEIGHTS.fight))
   ok('重击权重高于普通攻击', ACTION_WEIGHTS.fight.heavy > ACTION_WEIGHTS.fight.attack, JSON.stringify(ACTION_WEIGHTS.fight))
 
   // ㊱ 画面箭头跟随：游戏给的方向指引要跟着走
@@ -510,7 +514,7 @@ console.log('\n[6] 自主连玩策略')
   ok('不再有「对可疑位置盲砍」', blind === 0, String(blind))
 
   // ㉖ 连段：出招表来自游戏内招式表，打架时真的会打出来
-  ok('连段表非空且都是合法键', COMBOS.length >= 5 && COMBOS.every((c) => /^[jilu89]+$/.test(c)), JSON.stringify(COMBOS))
+  ok('连段表非空且都是合法键', COMBOS.length >= 5 && COMBOS.every((c) => /^[jilu89ws]+$/.test(c)), JSON.stringify(COMBOS))
   const pComb = createPolicy('advance')
   let sawCombo = null
   for (let i = 0; i < 40; i++) {
@@ -518,7 +522,7 @@ console.log('\n[6] 自主连玩策略')
     if (d.action === 'combo') { sawCombo = d; break }
   }
   ok('打架时会打出连段', !!sawCombo, sawCombo ? JSON.stringify(sawCombo) : '40 次决策里没出现 combo')
-  if (sawCombo) ok('连段带上了键序列', /^[jilu89]+$/.test(sawCombo.keys || ''), String(sawCombo.keys))
+  if (sawCombo) ok('连段带上了键序列', /^[jilu89ws]+$/.test(sawCombo.keys || ''), String(sawCombo.keys))
 
   // ㉒ 确认键上限：盲按 Enter 可能在菜单里选中「退出」把游戏退掉（真出过事）
   const p13 = createPolicy('advance')
