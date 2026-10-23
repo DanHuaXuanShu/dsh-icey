@@ -374,7 +374,7 @@ console.log('\n[6] 自主连玩策略')
   // ㉓ 行动权重：确定性 + 每个 preset 的权重表都存在
   ok('pickWeighted 是确定性的', pickWeighted(ACTION_WEIGHTS.fight, 42) === pickWeighted(ACTION_WEIGHTS.fight, 42), '')
   ok('advance/explore/fight 都有权重表', !!(ACTION_WEIGHTS.advance && ACTION_WEIGHTS.fight && ACTION_WEIGHTS.explore), Object.keys(ACTION_WEIGHTS).join(','))
-  ok('战斗权重里位移/闪避占比够高', (ACTION_WEIGHTS.fight.dash + ACTION_WEIGHTS.fight.move + ACTION_WEIGHTS.fight.jump) >= 6, JSON.stringify(ACTION_WEIGHTS.fight))
+  ok('战斗权重里仍有足够闪避（≥3）', ACTION_WEIGHTS.fight.dash >= 3, JSON.stringify(ACTION_WEIGHTS.fight))
   const spread = new Set()
   for (let i = 0; i < 200; i++) spread.add(pickWeighted(ACTION_WEIGHTS.explore, i))
   ok('探索权重能出多种动作（有变化）', spread.size >= 3, [...spread].join(','))
@@ -429,6 +429,19 @@ console.log('\n[6] 自主连玩策略')
   const envSeam = analyzeEnvironment(withSeam, EW, EH)
   ok('竖直接缝：检测到环境异常', envSeam.seam >= SEAM_DIFF, JSON.stringify(envSeam))
   ok('接缝有横向位置', envSeam.seamX > 0.3 && envSeam.seamX < 0.7, String(envSeam.seamX))
+
+  // ㊲ 处决优先级（用户要求）：看到黄圈+头顶L 立刻按 L，处决完长按 J 吸超载
+  const pExec = createPolicy('advance')
+  const dExec = pExec.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5, executePrompt: true, executeX: 0.6 }, { now: 0 })
+  ok('看到处决提示 → 立刻按 L', dExec.action === 'execute', JSON.stringify(dExec))
+  ok('处决理由写明了收益', /回血|回盾|结晶/.test(dExec.why || ''), dExec.why)
+  const dOver = pExec.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5, executePrompt: false }, { now: 1500 })
+  ok('处决之后 → 长按 J 吸收超载', dOver.action === 'overload', JSON.stringify(dOver))
+
+  // ㊳ 权重：连段/重击优先级提高（用户要求）
+  ok('连段权重最高', ACTION_WEIGHTS.fight.combo >= 8, JSON.stringify(ACTION_WEIGHTS.fight))
+  ok('重击权重至少 5', ACTION_WEIGHTS.fight.heavy >= 5, JSON.stringify(ACTION_WEIGHTS.fight))
+  ok('重击权重高于普通攻击', ACTION_WEIGHTS.fight.heavy > ACTION_WEIGHTS.fight.attack, JSON.stringify(ACTION_WEIGHTS.fight))
 
   // ㊱ 画面箭头跟随：游戏给的方向指引要跟着走
   const pArr = createPolicy('advance')
