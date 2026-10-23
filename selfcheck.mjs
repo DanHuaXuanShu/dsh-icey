@@ -178,7 +178,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -215,9 +215,12 @@ console.log('\n[6] 自主连玩策略')
   const p1 = createPolicy('advance')
   const d1 = p1.decide({ motion: 0, hudKick: 0 }, { now: 0 })
   ok('静止第 1 次 → 反向挪（不是继续走）', d1.action === 'move' && d1.dir === 'left', JSON.stringify(d1))
+  // 第 2 下必须是 **J**：ICEY 的互动键是 J（提示框写「按 J: 开启强化」），不是 Enter
   const d2 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2000 })
-  ok('静止第 2 次 → 按确认键', d2.action === 'interact', JSON.stringify(d2))
-  ok('连按确认不会无限刷（有节流）', p1.decide({ motion: 0, hudKick: 0 }, { now: 2100 }).action !== 'interact', 'throttled')
+  ok('静止第 2 次 → 按 J（ICEY 的互动键）', d2.action === 'attack', JSON.stringify(d2))
+  const dStuck3 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2400 })
+  ok('静止第 3 次 → 按确认键', dStuck3.action === 'interact', JSON.stringify(dStuck3))
+  ok('确认键有节流（刚按过不会连点）', p1.decide({ motion: 0, hudKick: 0 }, { now: 2500 }).action !== 'interact', 'throttled')
 
   // ⑥ 策略：HUD 在跳 → 打架，出攻击/重击
   const p2 = createPolicy('advance')
@@ -313,7 +316,8 @@ console.log('\n[6] 自主连玩策略')
   ok('阶梯里会出现跳', kinds.includes('jump'), kinds.join(','))
   ok('阶梯里会出现攻击', kinds.includes('attack'), kinds.join(','))
   ok('不会一直只做同一个动作', new Set(kinds.filter((k) => k !== 'wait')).size >= 3, kinds.join(','))
-  ok('UNSTUCK_LADDER 是 4 步', UNSTUCK_LADDER.length === 4, JSON.stringify(UNSTUCK_LADDER))
+  ok('UNSTUCK_LADDER 是 5 步', UNSTUCK_LADDER.length === 5, JSON.stringify(UNSTUCK_LADDER))
+  ok('阶梯第二下是 J（互动键优先于 Enter）', UNSTUCK_LADDER[1] === 'j', JSON.stringify(UNSTUCK_LADDER))
 
   // ⑲ 一整轮阶梯都失败 ⇒ 必须「掉头」而不是继续撞；且方向真的翻了
   const p12 = createPolicy('advance')
@@ -342,6 +346,18 @@ console.log('\n[6] 自主连玩策略')
   }
   ok(`确认键不超过 ${MAX_INTERACTS} 次`, interacts <= MAX_INTERACTS, String(interacts))
   ok('确认键用完后仍有其它脱困动作可用', jumpAfterCap || others > 0, `jump=${jumpAfterCap} others=${others}`)
+
+  // ㉑ 加载/标题阶段**不能**被算成「卡住」，否则进游戏的黑屏几秒就会被判死路
+  //    （2026-10-23 真机：从标题按 3 次 Enter 进游戏，加载期间 stillStreak 攒满 → 6 秒放弃）
+  const p14 = createPolicy('advance')
+  let stuckWhileBooting = false
+  for (let i = 0; i < 10; i++) {
+    const d = p14.decide({ motion: 0.001, hudKick: 0, hudBright: 0, progress: 0.0 }, { now: i * 900 })
+    if (d.action === 'move' || d.action === 'heavy' || d.action === 'jump') stuckWhileBooting = true
+  }
+  ok('没有 HUD 时只按确认/等待，不进入脱困动作', !stuckWhileBooting, '出现了脱困动作')
+  ok('没有 HUD 时 stillStreak 不累积', p14.stillStreak === 0, String(p14.stillStreak))
+  ok('启动阶段的确认键上限比游戏中宽', MAX_BOOT_INTERACTS > MAX_INTERACTS, `${MAX_BOOT_INTERACTS} vs ${MAX_INTERACTS}`)
 }
 
 /* ---------- 汇总 ---------- */
