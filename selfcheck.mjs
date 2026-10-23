@@ -178,7 +178,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -456,6 +456,24 @@ console.log('\n[6] 自主连玩策略')
   const dPlay2 = pPlay2.decide({ motion: 0.2, hudKick: 0, hudBright: 0.07, progress: 0.5, listBands: 3, darkRatio: 0.5 }, { now: 0 })
   ok('正常画面不会被当成菜单', dPlay2.action !== 'pause', JSON.stringify(dPlay2))
   ok('菜单阈值来自实测范围', MENU_LIST_BANDS >= 8 && MENU_DARK_RATIO > 0.85, `${MENU_LIST_BANDS}/${MENU_DARK_RATIO}`)
+
+  // ㊵ 连段权重：依据社区实战经验（磁阱最高、荡涤最低）
+  ok('每条连段都有权重', COMBOS.every((c) => typeof COMBO_WEIGHTS[c] === 'number'), JSON.stringify(COMBOS.filter((c) => typeof COMBO_WEIGHTS[c] !== 'number')))
+  ok('权重表里没有多余条目', Object.keys(COMBO_WEIGHTS).every((k) => COMBOS.includes(k)), JSON.stringify(Object.keys(COMBO_WEIGHTS).filter((k) => !COMBOS.includes(k))))
+  ok('磁阱权重最高（站桩输出+空档可闪+吸附有伤害）', COMBO_WEIGHTS['jjiii'] === Math.max(...Object.values(COMBO_WEIGHTS)), JSON.stringify(COMBO_WEIGHTS))
+  ok('荡涤权重最低（卡手严重）', COMBO_WEIGHTS['iii'] === Math.min(...Object.values(COMBO_WEIGHTS)), JSON.stringify(COMBO_WEIGHTS))
+  ok('迭影权重高于荡涤（范围大 vs 卡手）', COMBO_WEIGHTS['jjji'] > COMBO_WEIGHTS['iii'], `${COMBO_WEIGHTS['jjji']} vs ${COMBO_WEIGHTS['iii']}`)
+  // 抽一批决策，确认实际打出来的连段里磁阱/迭影多于荡涤
+  {
+    const pC = createPolicy('advance')
+    const seen = {}
+    for (let i = 0; i < 600; i++) {
+      const d = pC.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5 }, { now: i * 300 })
+      if (d.action === 'combo' && d.keys) seen[d.keys] = (seen[d.keys] || 0) + 1
+    }
+    const top = (seen['jjiii'] || 0) + (seen['jjji'] || 0)
+    ok('实战里磁阱+迭影打得比荡涤多', top > (seen['iii'] || 0) * 2, JSON.stringify(seen))
+  }
 
   // ㊲ 处决优先级（用户要求）：看到黄圈+头顶L 立刻按 L，处决完长按 J 吸超载
   const pExec = createPolicy('advance')
