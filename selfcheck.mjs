@@ -178,7 +178,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -350,7 +350,18 @@ console.log('\n[6] 自主连玩策略')
   // 阶梯最后一步必须是 Esc：万一 Enter 打开了招式升级界面（那里的 Enter 是花钱升级），Esc 能安全退出
   ok('阶梯最后一步是 Esc（安全退出菜单）', UNSTUCK_LADDER[UNSTUCK_LADDER.length - 1] === 'escape', JSON.stringify(UNSTUCK_LADDER))
 
-  // ㉑ 确认键上限：盲按 Enter 可能在菜单里选中「退出」把游戏退掉（真出过事）
+  // ㉑ 看到互动提示框就直接按 Enter（这是最可信的「这里能互动」信号）
+  //    实测：无提示 0.019%，有提示 0.23~0.40%
+  const pP = createPolicy('advance')
+  const dP = pP.decide({ motion: 0.015, hudKick: 0, hudBright: 0.08, progress: 0.01, promptBright: 0.003 }, { now: 0 })
+  ok('看到提示框时按 Enter 互动', dP.action === 'interact', JSON.stringify(dP))
+  ok('提示原因的文案说清了依据', /提示框/.test(dP.why || ''), dP.why)
+  const pN = createPolicy('advance')
+  const dN = pN.decide({ motion: 0.015, hudKick: 0, hudBright: 0.08, progress: 0.01, promptBright: 0.0002 }, { now: 0 })
+  ok('提示框信号很弱时不盲按 Enter', dN.action !== 'interact', JSON.stringify(dN))
+  ok('PROMPT_MIN 落在实测区间内', PROMPT_MIN > 0.0001 && PROMPT_MIN < 0.002, String(PROMPT_MIN))
+
+  // ㉒ 确认键上限：盲按 Enter 可能在菜单里选中「退出」把游戏退掉（真出过事）
   const p13 = createPolicy('advance')
   let interacts = 0
   let jumpAfterCap = false

@@ -203,11 +203,18 @@ export function apply(ctx) {
     description:
       '看一眼《艾希》现在画面上是什么，返回真实截图（不是缓存、不是模拟）。\n'
       + '每次操作之后都该看一次，确认角色真的动了/走到哪了/有没有怪。\n'
+      + '带 `crop: "prompt"` 时只裁**交互提示区**（角色右中那块，原分辨率）——'
+      + '那里会浮出白字提示，比如「坐标：时计塔内 / 海拔：638米 / ⏎: 开启强化」。'
+      + '想知道「现在能按什么键」就用这个：裁图不缩放，文字看得清。\n'
       + '返回里会写明现在能不能操作；不能操作的话会给出原因。',
     parameters: {
       maxWidth: {
         type: 'integer',
         description: '截图宽度上限（像素，默认用设置里的 1280；越大越清楚也越费 token）',
+      },
+      crop: {
+        type: 'string',
+        description: 'full（默认，整屏）/ prompt（只裁交互提示区，原分辨率，用来读提示文字）',
       },
     },
     output: imageOutput,
@@ -217,6 +224,16 @@ export function apply(ctx) {
       if (!st.running) {
         return { text: `没接上游戏，看不到画面。${st.health?.reason || ''}\n下一步：icey_start。`, image: null }
       }
+      const wantCrop = String(args.crop || 'full').toLowerCase()
+      if (wantCrop === 'prompt') {
+        const cut = await s.lookCrop({ x0: 0.42, y0: 0.38, x1: 0.99, y1: 0.86 })
+        const [ref] = await ctx.attachments.saveImages([{ data: cut.png, mediaType: 'image/png', name: 'icey-prompt' }])
+        return {
+          text: `交互提示区 ${cut.width}x${cut.height}（原分辨率裁图，未缩放）。\n`
+            + '上面若有白字提示，直接读它决定按什么键；没有提示通常意味着这里不能互动。',
+          image: ref,
+        }
+      }
       const frame = await s.look({ maxWidth: Number(args.maxWidth) || st.config.maxFrameWidth })
       const [ref] = await ctx.attachments.saveImages([{ data: frame.png, mediaType: 'image/png', name: 'icey-look' }])
       const lines = [
@@ -224,6 +241,7 @@ export function apply(ctx) {
         st.health?.playable
           ? '现在可以操作。'
           : `现在不能操作：${st.health?.reason || '原因未知'}`,
+        '想看「现在能按什么键」可以再来一次 icey_look({crop:"prompt"})。',
       ]
       return { text: lines.join('\n'), image: ref }
     },
