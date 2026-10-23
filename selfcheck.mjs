@@ -178,7 +178,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, createChestTracker } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -433,6 +433,29 @@ console.log('\n[6] 自主连玩策略')
   const envSeam = analyzeEnvironment(withSeam, EW, EH)
   ok('竖直接缝：检测到环境异常', envSeam.seam >= SEAM_DIFF, JSON.stringify(envSeam))
   ok('接缝有横向位置', envSeam.seamX > 0.3 && envSeam.seamX < 0.7, String(envSeam.seamX))
+
+  // ㊴ 停在菜单里（强化页面）：只按 Esc，绝不按 Enter —— 那里的 Enter 是「升级」，会花钱
+  const pMenu = createPolicy('advance')
+  const dMenu = pMenu.decide({ motion: 0.02, hudKick: 0, hudBright: 0.07, progress: 0.02, listBands: 13, darkRatio: 0.83 }, { now: 0 })
+  ok('识别为菜单 → 按 Esc 退出', dMenu.action === 'pause', JSON.stringify(dMenu))
+  ok('菜单理由写明了依据', /文字|压暗/.test(dMenu.why || ''), dMenu.why)
+  const dMenu2 = pMenu.decide({ motion: 0.02, hudKick: 0, hudBright: 0.07, progress: 0.02, listBands: 13, darkRatio: 0.83 }, { now: 300 })
+  ok('Esc 有节流（不连按）', dMenu2.action === 'wait', JSON.stringify(dMenu2))
+  const dMenu3 = pMenu.decide({ motion: 0.02, hudKick: 0, hudBright: 0.07, progress: 0.02, listBands: 13, darkRatio: 0.83 }, { now: 5000 })
+  ok('隔 5 秒再次 Esc 并累计计数', dMenu3.action === 'pause' && pMenu.menuEscCount >= 2, String(pMenu.menuEscCount))
+
+  // 菜单里连续 20 秒决策，一次 Enter 都不能出现
+  const pMenu4 = createPolicy('advance')
+  let sawMenuEnter = false
+  for (let t = 0; t < 20000; t += 500) {
+    const d = pMenu4.decide({ motion: 0.02, hudKick: 0, hudBright: 0.07, progress: 0.02, listBands: 14, darkRatio: 0.9 }, { now: t })
+    if (d.action === 'interact') sawMenuEnter = true
+  }
+  ok('菜单里 20 秒内一次 Enter 都没有', !sawMenuEnter, '')
+  const pPlay2 = createPolicy('advance')
+  const dPlay2 = pPlay2.decide({ motion: 0.2, hudKick: 0, hudBright: 0.07, progress: 0.5, listBands: 3, darkRatio: 0.5 }, { now: 0 })
+  ok('正常画面不会被当成菜单', dPlay2.action !== 'pause', JSON.stringify(dPlay2))
+  ok('菜单阈值来自实测范围', MENU_LIST_BANDS >= 8 && MENU_DARK_RATIO > 0.85, `${MENU_LIST_BANDS}/${MENU_DARK_RATIO}`)
 
   // ㊲ 处决优先级（用户要求）：看到黄圈+头顶L 立刻按 L，处决完长按 J 吸超载
   const pExec = createPolicy('advance')
