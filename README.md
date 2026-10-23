@@ -112,6 +112,34 @@ D3D11 窗口用普通 `BitBlt` 会抓到**全黑**。必须 `PrintWindow(hwnd, d
 
 ---
 
+## 规则卡：`icey_playbook`
+
+模型不知道 ICEY 的坑（哪些数字代表进展、哪扇门开不了、菜单里哪个键会退出游戏），
+每次都靠试错，代价是几十秒真机时间和几次误操作（**真的把游戏退掉过一次**）。
+所以把实测结论固化成了规则卡：
+
+```js
+icey_playbook({})                  // 完整版（约 1000 字）
+icey_playbook({ format: 'compact' })  // 4 行精华，省 token
+```
+
+也可以直接取：`GET /api/dsh-icey/playbook`（markdown），`?format=compact` 取精华。
+
+规则卡的结构参考了 [GameScaling](https://github.com/THUSI-Lab/GameScaling) 的系统提示写法
+（`Game Rules` / `Common Keys` / `Output Format` / 说明），内容全部来自本机实测：
+
+| 段 | 内容举例 |
+|---|---|
+| **Game Rules** | 左上角是血条+连击、右上角是钱；靠近可互动物会浮出白字提示框；有些门是剧情锁 |
+| **Common Keys** | W/S/A/D 移动、J 攻击、I 重击、L 处决、空格跳、Enter 互动/确认、Esc 暂停 |
+| **怎么判断真进展** | 海拔/坐标数字变了、画面整体横移、$ 变大；原地小幅抖动 = 被挡住 |
+| **危险动作** | 菜单里的「退出」也是用 Enter 选的（实测把游戏退掉过）→ 盲按确认键每次连玩限 3 次 |
+
+> 顺带那个项目里最有用的一条指令是：**「局面没变就直接出动作，只在明显变化时才思考」**。
+> 这也是 `icey_play` 的设计原则 —— 它只在 `events` 里汇报值得注意的变化，不逐帧说话。
+
+---
+
 ## 自主连玩：`icey_play`（一次调用玩一段）
 
 前面 6 个工具都是「你做一步、我看一眼」。`icey_play` 是**反过来**的：
