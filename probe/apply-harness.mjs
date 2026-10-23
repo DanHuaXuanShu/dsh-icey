@@ -3,7 +3,7 @@
  *
  * 验三件事：
  *   ① 激活阶段不抛（抛了整条插件不装载，DSH 只留一句 warning）
- *   ② 有 tools/attachments 时，7 个 icey_* 工具被注册（合并成一行后靠 ctx.get 探测）
+ *   ② 有 tools/attachments 时，8 个 icey_* 工具被注册（合并成一行后靠 ctx.get 探测）
  *   ③ 没有 tools/attachments 时，**只跳过工具**，路由/配置照常 —— 优雅降级
  */
 const calls = { routes: [], tools: [], effects: [], logs: [] }
@@ -68,8 +68,8 @@ try {
   await host.apply(ctx, {})
   console.log('\n[有 tools/attachments]')
   console.log('  路由:', calls.routes.length, '条；工具:', calls.tools.length, '个 ->', calls.tools.join(', '))
-  if (calls.routes.length !== 11) { failed = true; console.log('  ❌ 路由数不对，应为 11') }
-  if (calls.tools.length !== 7) { failed = true; console.log('  ❌ 工具数不对，应为 7') }
+  if (calls.routes.length !== 12) { failed = true; console.log('  ❌ 路由数不对，应为 12') }
+  if (calls.tools.length !== 8) { failed = true; console.log('  ❌ 工具数不对，应为 8') }
 } catch (e) {
   failed = true
   console.log('❌ [有 tools] apply 抛错：', e?.message)
@@ -83,7 +83,7 @@ try {
   await host.apply(ctx, {})
   console.log('\n[无 tools/attachments]')
   console.log('  路由:', calls.routes.length, '条；工具:', calls.tools.length, '个')
-  if (calls.routes.length !== 11) { failed = true; console.log('  ❌ 路由被连累没注册') }
+  if (calls.routes.length !== 12) { failed = true; console.log('  ❌ 路由被连累没注册') }
   if (calls.tools.length !== 0) { failed = true; console.log('  ❌ 没有 tools 服务却注册了工具') }
   const skipLog = calls.logs.find(([, m]) => /可选依赖方式注册/.test(m))
   console.log('  跳过说明:', skipLog ? '有 ✅' : '无 ❌')

@@ -317,6 +317,27 @@ export function apply(ctx) {
     },
   })
 
+  /* ---------------- 5b. 规则卡（玩之前先看一眼，少踩坑） ---------------- */
+
+  tool({
+    name: 'icey_playbook',
+    description:
+      '取《艾希 ICEY》的**游戏规则卡**：怎么判断真的在前进、哪些键是干什么的、'
+      + '**哪些门打不开**、哪些操作有危险（比如菜单里的「退出」也是用确认键选的）。\n'
+      + '什么时候看：第一次玩这个游戏之前；或者 `icey_play` 返回「这处过不去」而你不知道该往哪走的时候。\n'
+      + '内容都是本机实测结论（不是抄文档），比逐步试错省时间。'
+      + '想省 token 就带 format=compact，只取一小段精华。',
+    parameters: {
+      format: { type: 'string', description: 'full（默认，完整规则卡）/ compact（几行精华）' },
+    },
+    output: textOutput,
+    async execute(args) {
+      const { PLAYBOOK, playbookText } = await import('./lib/playbook.mjs')
+      if (args.format === 'compact') return { text: PLAYBOOK.digest }
+      return { text: playbookText() }
+    },
+  })
+
   /* ---------------- 6. 自主连玩（不用每步都问） ---------------- */
 
   tool({
@@ -333,6 +354,7 @@ export function apply(ctx) {
       + '看到 events 里那条「过不去」，就该自己看截图判断这是锁住的门、要等剧情、还是需要别的办法——'
       + '而不是继续硬撞。连续几轮没进展它会主动停下把画面交回。\n'
       + '（确认键每次连玩最多盲按 3 次：暂停菜单里的「退出」也是用它选的，按多了可能把游戏退掉。）\n'
+      + '第一次玩建议先调 icey_playbook 看一眼规则卡（哪些门打不开、哪些键会退游戏），能少踩坑。\n'
       + '返回里的截图按时间顺序排列，用它们判断这轮有没有实际进展。',
     parameters: {
       seconds: { type: 'integer', description: '连玩多久（5–300 秒，默认 30）。先试 30 秒，看得动再加长' },
