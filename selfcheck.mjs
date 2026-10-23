@@ -178,7 +178,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -227,8 +227,8 @@ console.log('\n[6] 自主连玩策略')
   const p2 = createPolicy('advance')
   const fightMoves = []
   for (let i = 0; i < 6; i++) fightMoves.push(p2.decide({ motion: 0.3, hudKick: FIGHT_HUDKICK + 0.05 }, { now: i * 100 }))
-  ok('在打架时只出攻击类动作', fightMoves.every((d) => ['attack', 'heavy', 'dash', 'chase', 'execute', 'storm', 'shade'].includes(d.action)), fightMoves.map((d) => d.action).join(','))
-  ok('在打架时确实会攻击', fightMoves.some((d) => d.action === 'attack'), fightMoves.map((d) => d.action).join(','))
+  ok('在打架时只出攻击类动作', fightMoves.every((d) => ['attack', 'heavy', 'dash', 'chase', 'execute', 'storm', 'shade', 'combo'].includes(d.action)), fightMoves.map((d) => d.action).join(','))
+  ok('在打架时确实会攻击（含连段）', fightMoves.some((d) => d.action === 'attack' || d.action === 'combo' || d.action === 'heavy'), fightMoves.map((d) => d.action).join(','))
 
   // ⑦ 策略：正常推进 → 走右
   const p3 = createPolicy('advance')
@@ -385,6 +385,17 @@ console.log('\n[6] 自主连玩策略')
   for (let i = 0; i < 40; i++) seqExp.push(pExp.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5 }, { now: i * 400 }))
   ok('探索时会掉头换方向', seqExp.some((d) => /掉头/.test(d.why || '')), [...new Set(seqExp.map((d) => d.action))].join(','))
   ok('探索时会对可疑位置砍一刀', seqExp.some((d) => /可疑/.test(d.why || '')), '')
+
+  // ㉖ 连段：出招表来自游戏内招式表，打架时真的会打出来
+  ok('连段表非空且都是合法键', COMBOS.length >= 5 && COMBOS.every((c) => /^[jilu89]+$/.test(c)), JSON.stringify(COMBOS))
+  const pComb = createPolicy('advance')
+  let sawCombo = null
+  for (let i = 0; i < 40; i++) {
+    const d = pComb.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5 }, { now: i * 300 })
+    if (d.action === 'combo') { sawCombo = d; break }
+  }
+  ok('打架时会打出连段', !!sawCombo, sawCombo ? JSON.stringify(sawCombo) : '40 次决策里没出现 combo')
+  if (sawCombo) ok('连段带上了键序列', /^[jilu89]+$/.test(sawCombo.keys || ''), String(sawCombo.keys))
 
   // ㉒ 确认键上限：盲按 Enter 可能在菜单里选中「退出」把游戏退掉（真出过事）
   const p13 = createPolicy('advance')
