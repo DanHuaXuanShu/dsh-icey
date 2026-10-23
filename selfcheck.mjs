@@ -430,6 +430,27 @@ console.log('\n[6] 自主连玩策略')
   ok('竖直接缝：检测到环境异常', envSeam.seam >= SEAM_DIFF, JSON.stringify(envSeam))
   ok('接缝有横向位置', envSeam.seamX > 0.3 && envSeam.seamX < 0.7, String(envSeam.seamX))
 
+  // ㊱ 画面箭头跟随：游戏给的方向指引要跟着走
+  const pArr = createPolicy('advance')
+  const dArr = pArr.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, arrowDir: 'right' }, { now: 0 })
+  ok('看到箭头 → 按箭头方向走', dArr.action === 'move' && dArr.dir === 'right', JSON.stringify(dArr))
+  ok('箭头理由说清了', /箭头/.test(dArr.why || ''), dArr.why)
+  const pArrL = createPolicy('advance')
+  const dArrL = pArrL.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, arrowDir: 'left' }, { now: 0 })
+  ok('箭头向左 → 往左走', dArrL.action === 'move' && dArrL.dir === 'left', JSON.stringify(dArrL))
+
+  // ㉗b 箭头检测器：用真实画面切片做回归（probe/fixtures/arrow-strip.png）
+  //    合成贴图不行 —— 模板里大量是暗背景像素，贴出来填充率对不上。
+  const { findGuideArrow } = await import('./lib/guide-arrow.mjs')
+  const { decodePng } = await import('./lib/png-decode.mjs')
+  const fsSync = await import('node:fs')
+  const stripPos = decodePng(fsSync.readFileSync('probe/fixtures/arrow-strip.png'))
+  const posHit = findGuideArrow(stripPos.rgba, stripPos.width, stripPos.height)
+  ok('真实画面里的箭头 → 检测到', posHit.hit === true, JSON.stringify(posHit))
+  ok('箭头方向 right', posHit.dir === 'right', JSON.stringify(posHit))
+  ok('箭头横向位置 ~41%', Math.abs(posHit.x - 0.41) < 0.06, String(posHit.x))
+  const stripNeg = decodePng(fsSync.readFileSync('probe/fixtures/arrow-strip-none.png'))
+  ok('同一帧的无关区域 → 不误报', findGuideArrow(stripNeg.rgba, stripNeg.width, stripNeg.height).hit === false, '')
   // ㉙ 宝箱靠「持续性」确认（用户纠正：连钱符号都是蓝的，没有金色可用）
   const tk1 = createChestTracker()
   const flash = [0, 300, 600].map((ms) => tk1.feed({ chest: 3, chestX: 0.5 }, ms)).filter(Boolean)
