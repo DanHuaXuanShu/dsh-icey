@@ -115,7 +115,7 @@ console.log('\n[2] 画面冻住 → 按确认关，然后自己停下（不死�
   const res = await s.play({ seconds: 25, preset: 'advance', maxFrames: 0 })
   const ms = Date.now() - t0
   ok('play 返回 ok', res.ok === true, JSON.stringify(res.error))
-  ok('因为「连续不动」主动停下', /连续多次/.test(res.stopped || ''), res.stopped)
+  ok('因为「连续不动」主动停下', /没进展|连续/.test(res.stopped || ''), res.stopped)
   ok('没跑满 25 秒就收手（<20 秒）', ms < 20000, ms + 'ms')
   ok('按过确认键', (res.actions?.interact || 0) > 0, JSON.stringify(res.actions))
   ok('结束后没有按住的键', s.backend.held.length === 0, s.backend.held.join(','))
@@ -142,7 +142,7 @@ console.log('\n[4] 参数夹紧')
   const res = await s.play({ seconds: 99999, preset: 'nonsense', maxFrames: 99 })
   ok('未知 preset 回落 advance', res.preset === 'advance', res.preset)
   ok('maxFrames 被夹到 ≤4', (res.frames?.length ?? 0) <= 4, String(res.frames?.length))
-  ok('没有因为超大 seconds 挂住（冻结场景会提前停）', /连续多次|玩满/.test(res.stopped || ''), res.stopped)
+  ok('没有因为超大 seconds 挂住（冻结场景会提前停）', /没进展|玩满/.test(res.stopped || ''), res.stopped)
   ok('结束后没有按住的键', s.backend.held.length === 0, s.backend.held.join(','))
 }
 

@@ -178,7 +178,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -314,6 +314,34 @@ console.log('\n[6] 自主连玩策略')
   ok('阶梯里会出现攻击', kinds.includes('attack'), kinds.join(','))
   ok('不会一直只做同一个动作', new Set(kinds.filter((k) => k !== 'wait')).size >= 3, kinds.join(','))
   ok('UNSTUCK_LADDER 是 4 步', UNSTUCK_LADDER.length === 4, JSON.stringify(UNSTUCK_LADDER))
+
+  // ⑲ 一整轮阶梯都失败 ⇒ 必须「掉头」而不是继续撞；且方向真的翻了
+  const p12 = createPolicy('advance')
+  let flip = null
+  for (let i = 0; i < 10; i++) {
+    const d = p12.decide({ motion: 0.015, hudKick: 0, hudBright: 0.08, progress: 0.01 }, { now: i * 900 })
+    if (/掉头/.test(d.why || '')) { flip = d; break }
+  }
+  ok('一轮阶梯后会掉头', !!flip, flip ? JSON.stringify(flip) : '没有出现掉头')
+  if (flip) {
+    ok('掉头是往反方向走', flip.action === 'move' && flip.dir === 'left', JSON.stringify(flip))
+    ok('掉头会走远一点（≥1 秒）', (flip.ms || 0) >= 1000, String(flip.ms))
+    ok('掉头之后推进方向也翻了', p12.dir === 'left', p12.dir)
+  }
+
+  // ⑳ 确认键上限：盲按 Enter 可能在菜单里选中「退出」把游戏退掉（真出过事）
+  const p13 = createPolicy('advance')
+  let interacts = 0
+  let jumpAfterCap = false
+  let others = 0
+  for (let i = 0; i < 40; i++) {
+    const d = p13.decide({ motion: 0.015, hudKick: 0, hudBright: 0.08, progress: 0.01 }, { now: i * 900 })
+    if (d.action === 'interact') interacts++
+    if (interacts >= MAX_INTERACTS && d.action === 'jump') jumpAfterCap = true
+    if (['jump', 'heavy'].includes(d.action) || (d.action === 'move')) others++
+  }
+  ok(`确认键不超过 ${MAX_INTERACTS} 次`, interacts <= MAX_INTERACTS, String(interacts))
+  ok('确认键用完后仍有其它脱困动作可用', jumpAfterCap || others > 0, `jump=${jumpAfterCap} others=${others}`)
 }
 
 /* ---------- 汇总 ---------- */
