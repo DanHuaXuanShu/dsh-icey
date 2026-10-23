@@ -178,7 +178,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -360,6 +360,16 @@ console.log('\n[6] 自主连玩策略')
   const dN = pN.decide({ motion: 0.015, hudKick: 0, hudBright: 0.08, progress: 0.01, promptBright: 0.0002 }, { now: 0 })
   ok('提示框信号很弱时不盲按 Enter', dN.action !== 'interact', JSON.stringify(dN))
   ok('PROMPT_MIN 落在实测区间内', PROMPT_MIN > 0.0001 && PROMPT_MIN < 0.002, String(PROMPT_MIN))
+
+  // ㉘ 实战数据学到的预警闪避：亮闪≥VFX_DANGER 就先闪（24 分钟数据：大伤害前 6.61% vs 全局 4.09%）
+  ok('VFX_DANGER 落在实测区间（4.09% 与 6.61% 之间）', VFX_DANGER > 0.041 && VFX_DANGER < 0.066, String(VFX_DANGER))
+  const pVfx = createPolicy('advance')
+  const dVfx = pVfx.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5, vfx: 0.07 }, { now: 0 })
+  ok('亮闪升高时先闪避而不是硬打', dVfx.action === 'dash', JSON.stringify(dVfx))
+  ok('闪避理由写明了数据依据', /亮闪/.test(dVfx.why || ''), dVfx.why)
+  const pNoVfx = createPolicy('advance')
+  const dNoVfx = pNoVfx.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5, vfx: 0.03 }, { now: 0 })
+  ok('亮闪正常时不乱闪', dNoVfx.action !== 'dash' || !/亮闪/.test(dNoVfx.why || ''), JSON.stringify(dNoVfx))
 
   // ㉓ 行动权重：确定性 + 每个 preset 的权重表都存在
   ok('pickWeighted 是确定性的', pickWeighted(ACTION_WEIGHTS.fight, 42) === pickWeighted(ACTION_WEIGHTS.fight, 42), '')
