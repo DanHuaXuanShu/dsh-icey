@@ -335,7 +335,16 @@ console.log('\n[6] 自主连玩策略')
     ok('掉头之后推进方向也翻了', p12.dir === 'left', p12.dir)
   }
 
-  // ⑳ 确认键上限：盲按 Enter 可能在菜单里选中「退出」把游戏退掉（真出过事）
+  // ⑳ 打架时会用「追击（U）」拉近距离 —— 招式表里 Chase 就是干这个的
+  const pChase = createPolicy('advance')
+  const seqFight = []
+  for (let i = 0; i < 30; i++) {
+    seqFight.push(pChase.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5 }, { now: i * 300 }))
+  }
+  ok('打架时会用追击（chase）', seqFight.some((d) => d.action === 'chase'), [...new Set(seqFight.map((d) => d.action))].join(','))
+  ok('打架时也会闪现（dash）', seqFight.some((d) => d.action === 'dash'), [...new Set(seqFight.map((d) => d.action))].join(','))
+
+  // ㉑ 确认键上限：盲按 Enter 可能在菜单里选中「退出」把游戏退掉（真出过事）
   const p13 = createPolicy('advance')
   let interacts = 0
   let jumpAfterCap = false

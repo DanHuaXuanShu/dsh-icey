@@ -112,6 +112,32 @@ D3D11 窗口用普通 `BitBlt` 会抓到**全黑**。必须 `PrintWindow(hwnd, d
 
 ---
 
+## 招式表（从游戏程序集里挖出来的）
+
+不靠攻略抄，直接扫 `ICEY_Data\Managed\Assembly-CSharp.dll` 里的字符串，
+拿到游戏**自己的内部动作名**，再对回键位（`PlayerPrefs` 里那套）：
+
+| 招式 | 键 | 内部动作名 / 说明 |
+|---|---|---|
+| 地面连段 | `J` | `ATTACK1..15` + `SameComboNum` 计数，最多 15 段 |
+| 重攻击 | `I` | `HeavyAttack`，破防/收尾 |
+| 空中连段 | `空格 → J` | `AirAtk1..7` / `AirCombo1..2` |
+| 空中重击 | `空格 → I` | `AirAtkHv1..5` |
+| 空中下劈 | `空格 → S+I` | `AirAtkDown` |
+| 处决 | `L` | `Execute` → QTE + **子弹时间** `ExecuteTimeSlow` |
+| 闪现 / 冲刺 | `O`(+方向) | `FlashUp/Down/Left/Right`，二段 `DoubleFlash` / `DoubleFlashAir` |
+| 追击 | `U`(+方向) | `Chase` —— 朝敌人突进，**拉近距离比走路快** |
+| 刀风暴 | `8` | `BladeStorm`（后期解锁）|
+| 影袭 | `9` | `ShadeAtk`（后期解锁）|
+
+另外挖到但还没接进自动连玩的：`CounterAttack`（反击）、`DefenseAir`（空中防御）、
+`HitArmor`（霸体）、`SpAttack`（特殊攻击）。
+
+**已经用上的**：`icey_play` 打架分支现在会用 **追击（U）拉距离**、**闪现（O）取消硬直**——
+以前只会走路靠近，慢得多。
+
+---
+
 ## 规则卡：`icey_playbook`
 
 模型不知道 ICEY 的坑（哪些数字代表进展、哪扇门开不了、菜单里哪个键会退出游戏），
