@@ -398,20 +398,34 @@ console.log('\n[6] 自主连玩策略')
   const EW = 320, EH = 180
   const mkEnv = (fn) => { const b = Buffer.alloc(EW * EH * 4, 0); for (let y = 0; y < EH; y++) for (let x = 0; x < EW; x++) { const i = (y * EW + x) * 4; const [r, g, bl] = fn(x, y); b[i] = r; b[i + 1] = g; b[i + 2] = bl; b[i + 3] = 255 } return b }
   const flat = mkEnv((x, y) => { const v = 60 + (y % 7); return [v, v + 2, v + 6] })
-  const withCrate = mkEnv((x, y) => { if (x > 150 && x < 175 && y > 110 && y < 140) return [255, 140, 20]; const v = 60 + (y % 7); return [v, v + 2, v + 6] })
-  const withBlue = mkEnv((x, y) => { if (x > 150 && x < 175 && y > 110 && y < 140) return [40, 120, 255]; const v = 60 + (y % 7); return [v, v + 2, v + 6] })
-  const withFaint = mkEnv((x, y) => { if (x > 150 && x < 175 && y > 110 && y < 140) { const v = 60 + (y % 7); return [v * 0.6, v * 0.9, v + 90] } const v = 60 + (y % 7); return [v, v + 2, v + 6] })
-  const envBlue = analyzeEnvironment(withBlue, EW, EH)
-  const envFaint = analyzeEnvironment(withFaint, EW, EH)
-  ok('蓝色宝箱：检测到', envBlue.destructible >= 2, JSON.stringify(envBlue))
-  ok('半透明宝箱：也能检测到', envFaint.destructible >= 2, JSON.stringify(envFaint))
+  // 宝箱检测已改成模板匹配（真实样本校准）：把模板贴进一张暗背景里，应该被找到
+  const { CHEST_TEMPLATE } = await import('./lib/chest-template.mjs')
+  const GW = CHEST_TEMPLATE.frameWidth, GH = Math.round(GW * 116 / 200)
+  const stampFrame = (applyTemplate) => {
+    const b = Buffer.alloc(GW * GH * 4, 0)
+    for (let i = 0; i < b.length; i += 4) { b[i] = 40; b[i + 1] = 42; b[i + 2] = 46; b[i + 3] = 255 }
+    if (applyTemplate) {
+      const ox = 90, oy = 50
+      for (let ty = 0; ty < CHEST_TEMPLATE.height; ty++) {
+        for (let tx = 0; tx < CHEST_TEMPLATE.width; tx++) {
+          const v = CHEST_TEMPLATE.gray[ty * CHEST_TEMPLATE.width + tx]
+          const i = ((oy + ty) * GW + (ox + tx)) * 4
+          if (i + 2 < b.length) { b[i] = v; b[i + 1] = v; b[i + 2] = v }
+        }
+      }
+    }
+    return b
+  }
+  const envChest = analyzeEnvironment(stampFrame(true), GW, GH)
+  const envEmpty = analyzeEnvironment(stampFrame(false), GW, GH)
+  ok('贴了宝箱模板 → 检测到', envChest.chest > 0, JSON.stringify(envChest))
+  ok('宝箱得分明显高于阈值', envChest.chestScore >= 0.62, String(envChest.chestScore))
+  ok('宝箱横向位置正确', Math.abs(envChest.chestX - 0.5) < 0.1, String(envChest.chestX))
+  ok('空画面 → 不误报', envEmpty.chest === 0, JSON.stringify(envEmpty))
   const withSeam = mkEnv((x, y) => { const v = x < 160 ? 70 : 120; return [v, v + 2, v + 6] })
   const envFlat = analyzeEnvironment(flat, EW, EH)
   ok('均匀墙面：没有可破坏物', envFlat.destructible === 0, JSON.stringify(envFlat))
   ok('均匀墙面：没有接缝', envFlat.seam === 0, JSON.stringify(envFlat))
-  const envCrate = analyzeEnvironment(withCrate, EW, EH)
-  ok('橙色箱子**不**算宝箱（宝箱是蓝的）', envCrate.destructible === 0, JSON.stringify(envCrate))
-  ok('宝箱有横向位置（蓝色箱子）', envBlue.destructibleX > 0.3 && envBlue.destructibleX < 0.7, String(envBlue.destructibleX))
   const envSeam = analyzeEnvironment(withSeam, EW, EH)
   ok('竖直接缝：检测到环境异常', envSeam.seam >= SEAM_DIFF, JSON.stringify(envSeam))
   ok('接缝有横向位置', envSeam.seamX > 0.3 && envSeam.seamX < 0.7, String(envSeam.seamX))
