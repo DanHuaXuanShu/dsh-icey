@@ -178,7 +178,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -384,7 +384,43 @@ console.log('\n[6] 自主连玩策略')
   const seqExp = []
   for (let i = 0; i < 40; i++) seqExp.push(pExp.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5 }, { now: i * 400 }))
   ok('探索时会掉头换方向', seqExp.some((d) => /掉头/.test(d.why || '')), [...new Set(seqExp.map((d) => d.action))].join(','))
-  ok('探索时会对可疑位置砍一刀', seqExp.some((d) => /可疑/.test(d.why || '')), '')
+  // ㉗ 环境感知：可破坏物要「看见才打」，隐藏房间靠接缝分析，不盲砍
+  const EW = 320, EH = 180
+  const mkEnv = (fn) => { const b = Buffer.alloc(EW * EH * 4, 0); for (let y = 0; y < EH; y++) for (let x = 0; x < EW; x++) { const i = (y * EW + x) * 4; const [r, g, bl] = fn(x, y); b[i] = r; b[i + 1] = g; b[i + 2] = bl; b[i + 3] = 255 } return b }
+  const flat = mkEnv((x, y) => { const v = 60 + (y % 7); return [v, v + 2, v + 6] })
+  const withCrate = mkEnv((x, y) => { if (x > 150 && x < 175 && y > 110 && y < 140) return [255, 140, 20]; const v = 60 + (y % 7); return [v, v + 2, v + 6] })
+  const withSeam = mkEnv((x, y) => { const v = x < 160 ? 70 : 120; return [v, v + 2, v + 6] })
+  const envFlat = analyzeEnvironment(flat, EW, EH)
+  ok('均匀墙面：没有可破坏物', envFlat.destructible === 0, JSON.stringify(envFlat))
+  ok('均匀墙面：没有接缝', envFlat.seam === 0, JSON.stringify(envFlat))
+  const envCrate = analyzeEnvironment(withCrate, EW, EH)
+  ok('亮橙箱子：检测到可破坏物', envCrate.destructible >= 2, JSON.stringify(envCrate))
+  ok('可破坏物有横向位置', envCrate.destructibleX > 0.3 && envCrate.destructibleX < 0.7, String(envCrate.destructibleX))
+  const envSeam = analyzeEnvironment(withSeam, EW, EH)
+  ok('竖直接缝：检测到环境异常', envSeam.seam >= SEAM_DIFF, JSON.stringify(envSeam))
+  ok('接缝有横向位置', envSeam.seamX > 0.3 && envSeam.seamX < 0.7, String(envSeam.seamX))
+
+  // 策略层：看见可破坏物就朝它走/打；看见接缝就停下观察（不瞎砍）
+  const pEnvFar = createPolicy('explore')
+  const dFar = pEnvFar.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, destructible: 3, destructibleX: 0.8 }, { now: 0 })
+  ok('可破坏物在右侧 → 走过去', dFar.action === 'move' && dFar.dir === 'right', JSON.stringify(dFar))
+  const pEnvNear = createPolicy('explore')
+  const dNear = pEnvNear.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, destructible: 3, destructibleX: 0.5 }, { now: 0 })
+  ok('可破坏物在跟前 → 打它', dNear.action === 'attack', JSON.stringify(dNear))
+  ok('打可破坏物的理由说清了', /可破坏物/.test(dNear.why || ''), dNear.why)
+  const pSeam = createPolicy('explore')
+  const dSeam = pSeam.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, seam: 40, seamX: 0.45 }, { now: 0 })
+  ok('看到接缝先停下观察（不瞎砍）', dSeam.action === 'wait', JSON.stringify(dSeam))
+  ok('接缝的理由提到隐藏入口', /隐藏入口|环境异常/.test(dSeam.why || ''), dSeam.why)
+
+  // 没有可破坏物/接缝时，探索不会平白无故挥刀
+  const pNoProbe = createPolicy('explore')
+  let blind = 0
+  for (let i = 0; i < 60; i++) {
+    const d = pNoProbe.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, destructible: 0, seam: 0 }, { now: i * 400 })
+    if (d.action === 'attack' && /可疑/.test(d.why || '')) blind++
+  }
+  ok('不再有「对可疑位置盲砍」', blind === 0, String(blind))
 
   // ㉖ 连段：出招表来自游戏内招式表，打架时真的会打出来
   ok('连段表非空且都是合法键', COMBOS.length >= 5 && COMBOS.every((c) => /^[jilu89]+$/.test(c)), JSON.stringify(COMBOS))
