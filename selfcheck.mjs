@@ -280,7 +280,13 @@ console.log('\n[3] 控制映射')
   const jump = planAction({ action: 'jump' })
   eq('jump → 点空格', jump.steps.map((s) => [s.key, s.holdMs]), [[' ', jump.steps[0].holdMs]])
   const dash = planAction({ action: 'dash', dir: 'left' })
-  eq('dash left → 按住 a', dash.steps.map((s) => s.key), ['a'])
+  // 🔴 回归：2026-10-24 发现 dash 以前**只返回方向键、从来没按过 O**，
+  //    所以所有「闪避/冲刺」实际只是往那个方向走 180ms。这条断言就是钉死这个的。
+  eq('dash left → 按住 a 再点 o（冲刺是两步，不能只按方向）', dash.steps.map((s) => s.key), ['a', DEFAULT_KEYMAP.dash])
+  ok('dash 里有冲刺键（防止再退回「只按方向」）', dash.steps.some((s) => s.key === DEFAULT_KEYMAP.dash), JSON.stringify(dash.steps.map((s) => s.key)))
+  // 垂直方向：够空中的入口用。PC 版冲刺是四方向的（FlashUp），以前从没调用过 up。
+  const dashUp = planAction({ action: 'dash', dir: 'up' })
+  eq('dash up → 按住 w 再点 o', dashUp.steps.map((s) => s.key), [DEFAULT_KEYMAP.moveUp, DEFAULT_KEYMAP.dash])
   const pause = planAction({ action: 'pause' })
   eq('pause → Esc', pause.steps.map((s) => s.key), ['Escape'])
   const menu = planAction({ action: 'menu', item: 'resume' })
@@ -388,10 +394,15 @@ console.log('\n[6] 自主连玩策略')
   // 第 2 下是**跳**（2026-10-24 起阶梯里不再有 Enter —— 看不见提示框时按它只可能打开菜单）
   const d2 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2000 })
   ok('静止第 2 次 → 跳（阶梯里没有 Enter）', d2.action === 'jump', JSON.stringify(d2))
-  // 第 3 下就认输掉头（阶梯只有「退一步 → 跳」两步无损试探）
+  // 第 3 下是**跳 + 向上冲刺**（2026-10-24：部分场景的入口在空中，普通跳够不到）
   const dStuck3 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2400 })
-  ok('静止第 3 次 → 掉头（两步试探都没用就认输）', dStuck3.action === 'move' && /掉头/.test(dStuck3.why || ''), JSON.stringify(dStuck3))
-  ok('脱困时不挥刀（别盲砍可疑位置）', !/^(heavy|attack)$/.test(dStuck3.action), String(dStuck3.action))
+  ok('静止第 3 次 → 跳 + 向上冲刺（够空中的入口）',
+    dStuck3.action === 'jump' && dStuck3.followUp?.action === 'dash' && dStuck3.followUp?.dir === 'up',
+    JSON.stringify(dStuck3))
+  // 第 4 下才认输掉头（阶梯是「退一步 → 跳 → 跳+上冲」三步无损试探）
+  const dStuck4 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2800 })
+  ok('静止第 4 次 → 掉头（三步试探都没用就认输）', dStuck4.action === 'move' && /掉头/.test(dStuck4.why || ''), JSON.stringify(dStuck4))
+  ok('脱困时不挥刀（别盲砍可疑位置）', !/^(heavy|attack)$/.test(dStuck4.action), String(dStuck4.action))
   ok('Enter 有节流（刚按过不会连点）', p1.decide({ motion: 0, hudKick: 0 }, { now: 2500 }).action !== 'interact', 'throttled')
 
   // ⑥ 策略：HUD 在跳 → 打架，出攻击/重击
@@ -493,7 +504,8 @@ console.log('\n[6] 自主连玩策略')
   // 2026-10-24 去掉重击：那和「别盲砍可疑位置」冲突，可破坏物交给接缝分支（有依据才打）
   ok('脱困时不挥刀（不盲砍可疑位置）', !kinds.includes('attack') && !UNSTUCK_LADDER.includes('heavy'), kinds.join(','))
   ok('脱困会掉头（走不通就换方向）', kinds.includes('back') && kinds.includes('jump'), kinds.join(','))
-  ok('脱困阶梯是 2 步（退/跳）', UNSTUCK_LADDER.length === 2, JSON.stringify(UNSTUCK_LADDER))
+  ok('脱困阶梯是 3 步（退 / 跳 / 跳+上冲）', UNSTUCK_LADDER.length === 3, JSON.stringify(UNSTUCK_LADDER))
+  ok('阶梯里有「跳 + 向上冲刺」那一级（空中入口）', UNSTUCK_LADDER.includes('jump-up'), JSON.stringify(UNSTUCK_LADDER))
   // 2026-10-24 用户问「为什么要按 Enter」→ 盲按 Enter 只可能白按或打开菜单，删掉
   ok('脱困阶梯里没有 Enter（看不见提示框时按它有害）', !UNSTUCK_LADDER.includes('interact'), JSON.stringify(UNSTUCK_LADDER))
   ok('脱困阶梯里也没有 Esc（菜单由专门的菜单分支处理）', !UNSTUCK_LADDER.includes('escape'), JSON.stringify(UNSTUCK_LADDER))
