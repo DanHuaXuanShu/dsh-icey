@@ -560,6 +560,22 @@ console.log('\n[6] 自主连玩策略')
     const stripNeg = decodePng(fsSync.readFileSync(FIX_NEG))
     ok('同一帧的无关区域 → 不误报', findGuideArrow(stripNeg.rgba, stripNeg.width, stripNeg.height).hit === false, '')
   }
+  // ㉗c 处决提示：用真实误报帧做回归（probe/fixtures/execute-false-positive.png）
+  //     2026-10-24 在怪区扫 586 帧时命中过 1 次，看图发现是**艾希刀光的金色火花**，
+  //     没有头顶 L。根因：hit 只看「像环的金色块」，没要求 hasL。
+  //     这张图就是那次的现场，留作回归 —— 以后改检测器不许再被刀光骗。
+  {
+    const FIX_EXEC = 'probe/fixtures/execute-false-positive.png'
+    if (!fsSync.existsSync(FIX_EXEC)) {
+      console.log('  --    跳过处决误报回归：' + FIX_EXEC + ' 缺失（不影响其它检查）')
+    } else {
+      const { findExecutePrompt } = await import('./lib/execute-prompt.mjs')
+      const fp = decodePng(fsSync.readFileSync(FIX_EXEC))
+      const r = findExecutePrompt(fp.rgba, fp.width, fp.height)
+      ok('刀光火花不会被当成处决提示（要求头顶有 L）', r.hit === false, JSON.stringify(r))
+    }
+  }
+
   // ㉙ 宝箱靠「持续性」确认（用户纠正：连钱符号都是蓝的，没有金色可用）
   const tk1 = createChestTracker()
   const flash = [0, 300, 600].map((ms) => tk1.feed({ chest: 3, chestX: 0.5 }, ms)).filter(Boolean)
