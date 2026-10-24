@@ -224,6 +224,42 @@ console.log('\n[2d] 跨回合记忆')
   }
 }
 
+/* ---------- 2e. 隐藏房间指纹 ---------- */
+console.log('\n[2e] 隐藏房间指纹')
+{
+  // 为什么有这个：这种房间里宝箱**时灵时不灵**（符号被粗光带打白就退出青色掩码）。
+  // 与其要求单帧认出来，不如先认出房间。实测两张真图：低饱和 0.34%/0.41%、高饱和青 6.79%/7.04%。
+  const { analyzeEnvironment, GRID_ROOM_LOW_SAT_MAX, GRID_ROOM_CYAN_MIN } = await import('./lib/autoplay.mjs')
+  const W = 160, H = 120
+  const mk = (fill) => {
+    const buf = Buffer.alloc(W * H * 4)
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const [r, g, b] = fill(x, y)
+        const i = (y * W + x) * 4
+        buf[i] = r; buf[i + 1] = g; buf[i + 2] = b; buf[i + 3] = 255
+      }
+    }
+    return buf
+  }
+
+  // 隐藏房间：暗底 + 密集青色网格线
+  const room = mk((x, y) => (x % 6 === 0 || y % 6 === 0 ? [30, 190, 240] : [8, 20, 30]))
+  const roomEnv = analyzeEnvironment(room, W, H)
+  ok('满屏青色网格 → 判定为隐藏房间', roomEnv.gridRoom === true, `低饱和 ${roomEnv.lowSatRatio} 青 ${roomEnv.cyanRatio}`)
+  ok('隐藏房间的低饱和占比确实很低', roomEnv.lowSatRatio < GRID_ROOM_LOW_SAT_MAX, String(roomEnv.lowSatRatio))
+  ok('隐藏房间的高饱和青确实很宽', roomEnv.cyanRatio > GRID_ROOM_CYAN_MIN, String(roomEnv.cyanRatio))
+
+  // 普通场景：大量灰白（地面/墙/角色皮肤）+ 一些彩色，低饱和占比高
+  const normal = mk((x, y) => ((x + y) % 3 === 0 ? [200, 195, 185] : [70, 60, 55]))
+  const normalEnv = analyzeEnvironment(normal, W, H)
+  ok('普通灰白场景不会被误判成隐藏房间', normalEnv.gridRoom === false, `低饱和 ${normalEnv.lowSatRatio} 青 ${normalEnv.cyanRatio}`)
+
+  // 反例：只有青色、没有暗部 → 低饱和依然低，但这是"纯青色画面"不是房间；
+  // 这里只保证判据不会因为缺字段崩掉，不额外要求它拒绝（房间本来就该认）。
+  ok('指纹字段始终是数字，不缺字段', typeof roomEnv.lowSatRatio === 'number' && typeof roomEnv.cyanRatio === 'number', '')
+}
+
 /* ---------- 3. 控制映射 ---------- */
 console.log('\n[3] 控制映射')
 {
