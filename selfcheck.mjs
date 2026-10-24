@@ -560,19 +560,28 @@ console.log('\n[6] 自主连玩策略')
     const stripNeg = decodePng(fsSync.readFileSync(FIX_NEG))
     ok('同一帧的无关区域 → 不误报', findGuideArrow(stripNeg.rgba, stripNeg.width, stripNeg.height).hit === false, '')
   }
-  // ㉗c 处决提示：用真实误报帧做回归（probe/fixtures/execute-false-positive.png）
-  //     2026-10-24 在怪区扫 586 帧时命中过 1 次，看图发现是**艾希刀光的金色火花**，
-  //     没有头顶 L。根因：hit 只看「像环的金色块」，没要求 hasL。
-  //     这张图就是那次的现场，留作回归 —— 以后改检测器不许再被刀光骗。
+  // ㉗c 处决提示：**用真实样本做回归**（2026-10-24 从用户录屏里拿到）
+  //     真样本 probe/fixtures/execute-keycap-L.png（录屏 65.0s）：
+  //     被打残的怪头上悬浮着一个「黑底 + 白色 L」的键帽，这才是处决提示。
+  //     之前一直按「金色环」去找，方向从一开始就是错的 —— 593 + 2299 帧一帧没抓到。
+  //     另一张 execute-keycap-U.png（8.0s）是同款键帽但字母是 U（追猎键），
+  //     说明**外形判据分不出字母**，检测器会命中它 —— 这是已知局限，不是 bug。
   {
-    const FIX_EXEC = 'probe/fixtures/execute-false-positive.png'
-    if (!fsSync.existsSync(FIX_EXEC)) {
-      console.log('  --    跳过处决误报回归：' + FIX_EXEC + ' 缺失（不影响其它检查）')
+    const FIX_L = 'probe/fixtures/execute-keycap-L.png'
+    const FIX_FP = 'probe/fixtures/execute-false-positive.png'
+    if (!fsSync.existsSync(FIX_L)) {
+      console.log('  --    跳过处决键帽回归：' + FIX_L + ' 缺失（不影响其它检查）')
     } else {
-      const { findExecutePrompt } = await import('./lib/execute-prompt.mjs')
-      const fp = decodePng(fsSync.readFileSync(FIX_EXEC))
-      const r = findExecutePrompt(fp.rgba, fp.width, fp.height)
-      ok('刀光火花不会被当成处决提示（要求头顶有 L）', r.hit === false, JSON.stringify(r))
+      const { findExecuteKeycap } = await import('./lib/execute-keycap.mjs')
+      const lImg = decodePng(fsSync.readFileSync(FIX_L))
+      const rL = findExecuteKeycap(lImg.rgba, lImg.width, lImg.height)
+      ok('真实处决键帽（黑底白 L）→ 检测到', rL.hit === true, JSON.stringify(rL))
+      ok('键帽位置在画面中部偏左', rL.hit && Math.abs(rL.x - 0.44) < 0.08, String(rL.x))
+      ok('键帽尺寸符合实测（约 4~5% 画面宽）', rL.hit && rL.bw / lImg.width > 0.03 && rL.bw / lImg.width < 0.07, rL.hit ? String(rL.bw / lImg.width) : '')
+      if (fsSync.existsSync(FIX_FP)) {
+        const fpImg = decodePng(fsSync.readFileSync(FIX_FP))
+        ok('刀光火花不会被当成键帽', findExecuteKeycap(fpImg.rgba, fpImg.width, fpImg.height).hit === false, '')
+      }
     }
   }
 
