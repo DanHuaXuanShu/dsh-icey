@@ -59,6 +59,9 @@ function makeCtx({ withTools = true } = {}) {
 
 let failed = false
 const host = await import('../index.js')
+// 工具清单的唯一权威源在 agent.js —— 别再在这里写死数字
+const agentMod = await import('../agent.js').catch(() => ({}))
+const expectedTools = Array.isArray(agentMod.TOOL_NAMES) ? agentMod.TOOL_NAMES : []
 console.log('index.js 导入 OK；inject =', JSON.stringify(host.inject), '；Config =', host.Config ? '有' : '无')
 
 /* ---------- ① 正常部署：应有 12 条路由 + 6 个工具 ---------- */
@@ -69,7 +72,17 @@ try {
   console.log('\n[有 tools/attachments]')
   console.log('  路由:', calls.routes.length, '条；工具:', calls.tools.length, '个 ->', calls.tools.join(', '))
   if (calls.routes.length !== 12) { failed = true; console.log('  ❌ 路由数不对，应为 12') }
-  if (calls.tools.length !== 8) { failed = true; console.log('  ❌ 工具数不对，应为 8') }
+  // 工具数从 agent.js 的 TOOL_NAMES 读，不写死 —— 写死过一次，加个工具就挂
+  if (expectedTools.length && calls.tools.length !== expectedTools.length) {
+    failed = true
+    console.log(`  ❌ 工具数不对：注册了 ${calls.tools.length} 个，清单里 ${expectedTools.length} 个`)
+  }
+  const missing = expectedTools.filter((n) => !calls.tools.includes(n))
+  if (missing.length) {
+    failed = true
+    console.log('  ❌ 清单里有但没注册：', missing.join(', '))
+  }
+  console.log(`  工具数 ${calls.tools.length}（清单 ${expectedTools.length}）✓`)
 } catch (e) {
   failed = true
   console.log('❌ [有 tools] apply 抛错：', e?.message)

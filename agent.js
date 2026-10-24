@@ -23,6 +23,15 @@ import { parseActionSpec, MAX_SEQUENCE } from './lib/control.mjs'
 export const name = 'dsh-icey-agent'
 export const inject = ['tools', 'attachments']
 
+// 工具清单 —— **唯一权威源**。
+// probe/apply-harness 的断言、index.js 的日志都读这里。
+// 之前那个数字抄了三份（「8 个」写死在三个文件里），加一个 icey_auto 就挂了一个探针。
+// 加工具时只改这一处。
+export const TOOL_NAMES = [
+  'icey_start', 'icey_status', 'icey_look', 'icey_screenshot', 'icey_act',
+  'icey_playbook', 'icey_auto', 'icey_play', 'icey_stop',
+]
+
 const hostDeps = await loadHostDeps()
 const defineTool = hostDeps.defineTool
 const localFallback = hostDeps.localFallback === true
@@ -416,6 +425,57 @@ export function apply(ctx) {
   })
 
   /* ---------------- 6. 自主连玩（不用每步都问） ---------------- */
+
+  tool({
+    name: 'icey_auto',
+    description:
+      '按任务跑一段，达成条件就停 —— 这是「我出路线、插件执行」那层接口。\n'
+      + '跟 icey_play 的区别只在两点：① task 一句话说清要干什么，不用记 preset 名；'
+      + '② until 能设停止条件（打完这波就停），不用白跑满时间。\n'
+      + 'task 关键词：推进/往右/走 → advance；探索/找/逛 → explore；打/战斗/清怪 → fight。\n'
+      + 'until=safe：脱离战斗（没敌人、没屏障）就提前停。适合「打完这波叫我」——'
+      + '省掉仗早打完还在原地空挥的那段时间。\n'
+      + '⚠️ 它仍然没有视觉理解：只会按信号走/打/脱困。遇到锁住的门、需要解谜、'
+      + '或者要走高处入口，还是得你自己用 icey_look + icey_act 判断。\n'
+      + '典型用法：icey_auto({task:"往右推进", until:"safe", seconds:120})'
+      + ' → 它一路推进、遇敌自己打、打完就停回来报告。',
+    parameters: {
+      task: { type: 'string', description: '一句话任务（推进 / 探索 / 战斗）' },
+      seconds: { type: 'integer', description: '最多跑多久（5–300 秒，默认 90）' },
+      until: { type: 'string', description: 'safe = 脱离战斗就提前停；不填 = 跑满 seconds' },
+      dir: { type: 'string', description: '推进方向 right / left，默认 right' },
+      brief: { type: 'boolean', description: 'true = 不带截图（省 token）' },
+    },
+    output: imageOutput,
+    async execute(args) {
+      const s = session()
+      const st = await s.status()
+      if (!st.running) {
+        return { text: `没接上游戏。${st.health?.reason || ''}\n下一步：icey_start。`, image: null }
+      }
+      const task = String(args.task || '').toLowerCase()
+      let preset = 'advance'
+      if (/战|打|清|fight/.test(task)) preset = 'fight'
+      else if (/探|找|逛|搜|explore/.test(task)) preset = 'explore'
+      const brief = args.brief === true
+      const res = await s.play({
+        preset,
+        seconds: args.seconds ?? 90,
+        until: args.until === 'safe' ? 'safe' : undefined,
+        dir: args.dir,
+        maxFrames: brief ? 0 : 2,
+        historyLen: 6,
+      })
+      if (!res.ok) {
+        return { text: `没跑起来：${res.error}\n下一步：icey_status 看看能不能操作。`, image: null }
+      }
+      const lines = [`任务「${args.task}」→ 按 ${preset} 执行`, summarizeRun(res)]
+      if (res.eventDigest) {
+        lines.push('途中事件：', ...res.eventDigest.split('\n').map((l) => `  ${l}`))
+      }
+      return { text: lines.join('\n'), image: null }
+    },
+  }),
 
   tool({
     name: 'icey_play',
