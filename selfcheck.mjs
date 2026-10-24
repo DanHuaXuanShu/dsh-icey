@@ -178,7 +178,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO, FIGHT_MOTION, FIGHT_ACTIVE_RATIO } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -232,20 +232,20 @@ console.log('\n[6] 自主连玩策略')
 
   // ⑦ 策略：正常推进 → 走右
   const p3 = createPolicy('advance')
-  const d3 = p3.decide({ motion: 0.2, hudKick: 0 }, { now: 0 })
+  const d3 = p3.decide({ motion: 0.01, hudKick: 0 }, { now: 0 })
   ok('正常情况会往右推进', d3.action === 'move' && d3.dir === 'right', JSON.stringify(d3))
 
   // ⑧ 确定性：同样的输入序列 → 同样的动作序列（所以能离线单测）
   const runSeq = (preset) => {
     const p = createPolicy(preset)
-    return [0, 1, 2, 3, 4, 5].map((i) => p.decide({ motion: 0.2, hudKick: 0 }, { now: i * 100 }).action).join(',')
+    return [0, 1, 2, 3, 4, 5].map((i) => p.decide({ motion: 0.01, hudKick: 0 }, { now: i * 100 }).action).join(',')
   }
   eq('策略是确定性的', runSeq('advance'), runSeq('advance'))
 
   // ⑨ 三个预设都能出动作，且 fight 不出移动
   ok('explore 存在且有描述', !!PRESETS.explore?.desc, PRESETS.explore?.desc)
   const p4 = createPolicy('fight')
-  const fm = Array.from({ length: 4 }, (_, i) => p4.decide({ motion: 0.2, hudKick: 0 }, { now: i * 100 }).action)
+  const fm = Array.from({ length: 4 }, (_, i) => p4.decide({ motion: 0.01, hudKick: 0 }, { now: i * 100 }).action)
   ok('fight 预设不走路', !fm.includes('move'), fm.join(','))
 
   // ⑩ 未知预设回落到 advance（不抛错）
@@ -386,9 +386,9 @@ console.log('\n[6] 自主连玩策略')
   // ㉔ 跟随旁白：字幕出现时先按确认把话听完，而不是继续乱跑
   const pNar = createPolicy('advance')
   // 连续两帧都有字幕才按（第一帧先等，滤掉一闪而过的亮光误判）
-  const dNar0 = pNar.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, subtitle: 0.05 }, { now: 0 })
+  const dNar0 = pNar.decide({ motion: 0.01, hudKick: 0, hudBright: 0.08, progress: 0.5, subtitle: 0.05 }, { now: 0 })
   ok('旁白第一帧先等一下（不急着按）', dNar0.action === 'wait', JSON.stringify(dNar0))
-  const dNar = pNar.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, subtitle: 0.05 }, { now: 900 })
+  const dNar = pNar.decide({ motion: 0.01, hudKick: 0, hudBright: 0.08, progress: 0.5, subtitle: 0.05 }, { now: 900 })
   ok('旁白连续出现时按确认键', dNar.action === 'interact', JSON.stringify(dNar))
   ok('旁白的理由写明了', /旁白/.test(dNar.why || ''), dNar.why)
   ok('SUBTITLE_MIN 是合理阈值', SUBTITLE_MIN > 0.005 && SUBTITLE_MIN < 0.1, String(SUBTITLE_MIN))
@@ -396,7 +396,7 @@ console.log('\n[6] 自主连玩策略')
   // ㉕ 探索：会掉头换方向扫图（找宝箱/彩蛋）
   const pExp = createPolicy('explore')
   const seqExp = []
-  for (let i = 0; i < 40; i++) seqExp.push(pExp.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5 }, { now: i * 400 }))
+  for (let i = 0; i < 40; i++) seqExp.push(pExp.decide({ motion: 0.01, hudKick: 0, hudBright: 0.08, progress: 0.5 }, { now: i * 400 }))
   ok('探索时会掉头换方向', seqExp.some((d) => /掉头/.test(d.why || '')), [...new Set(seqExp.map((d) => d.action))].join(','))
   // ㉗ 环境感知：可破坏物要「看见才打」，隐藏房间靠接缝分析，不盲砍
   const EW = 320, EH = 180
@@ -453,9 +453,37 @@ console.log('\n[6] 自主连玩策略')
   }
   ok('菜单里 20 秒内一次 Enter 都没有', !sawMenuEnter, '')
   const pPlay2 = createPolicy('advance')
-  const dPlay2 = pPlay2.decide({ motion: 0.2, hudKick: 0, hudBright: 0.07, progress: 0.5, listBands: 3, darkRatio: 0.5 }, { now: 0 })
+  const dPlay2 = pPlay2.decide({ motion: 0.01, hudKick: 0, hudBright: 0.07, progress: 0.5, listBands: 3, darkRatio: 0.5 }, { now: 0 })
   ok('正常画面不会被当成菜单', dPlay2.action !== 'pause', JSON.stringify(dPlay2))
   ok('菜单阈值来自实测范围', MENU_LIST_BANDS >= 8 && MENU_DARK_RATIO > 0.85, `${MENU_LIST_BANDS}/${MENU_DARK_RATIO}`)
+
+  // ㉖e 战斗检测（不靠敌人血条 —— 用户指出大部分怪没血条）
+  //     真机实测（连续 100ms 帧）：战斗 motion 中位 24.6%、走路 0.29%、静止 0.70%
+  {
+    const pIdle = createPolicy('advance')
+    let falseFight = 0
+    for (let i = 0; i < 20; i++) {
+      pIdle.decide({ motion: 0.007, hudKick: 0.005, hudBright: 0.05, progress: 0.9 }, { now: i * 300 })
+      if (pIdle.fighting) falseFight++
+    }
+    ok('空地/走路不会被判成战斗', falseFight === 0, String(falseFight))
+
+    const pFight = createPolicy('advance')
+    let sawFight = 0
+    for (let i = 0; i < 10; i++) {
+      pFight.decide({ motion: 0.246, hudKick: 0.002, hudBright: 0.04, progress: 0.05 }, { now: i * 300 })
+      if (pFight.fighting) sawFight++
+    }
+    ok('战斗中能识别出在打架', sawFight >= 8, String(sawFight))
+
+    pFight.decide({ motion: 0.006, hudKick: 0.002, hudBright: 0.04, progress: 0.9 }, { now: 2900 })
+    ok('刚打完 0.2 秒仍在战斗态（粘滞）', pFight.fighting === true, String(pFight.fighting))
+    for (let t = 3200; t <= 9000; t += 300) {
+      pFight.decide({ motion: 0.006, hudKick: 0.002, hudBright: 0.04, progress: 0.9 }, { now: t })
+    }
+    ok('安静 6 秒后退出战斗态', pFight.fighting === false, String(pFight.fighting))
+    ok('战斗判据的门限来自实测', FIGHT_MOTION >= 0.05 && FIGHT_ACTIVE_RATIO > 0 && FIGHT_ACTIVE_RATIO <= 0.5, `${FIGHT_MOTION}/${FIGHT_ACTIVE_RATIO}`)
+  }
 
   // ㉖d 分阶段连招（取消衔接，来自 BV1314y1k7Zy 的技巧演示）
   const { planAction: planPhase } = await import('./lib/control.mjs')
@@ -499,11 +527,11 @@ console.log('\n[6] 自主连玩策略')
 
   // ㊱ 画面箭头跟随：游戏给的方向指引要跟着走
   const pArr = createPolicy('advance')
-  const dArr = pArr.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, arrowDir: 'right' }, { now: 0 })
+  const dArr = pArr.decide({ motion: 0.01, hudKick: 0, hudBright: 0.08, progress: 0.5, arrowDir: 'right' }, { now: 0 })
   ok('看到箭头 → 按箭头方向走', dArr.action === 'move' && dArr.dir === 'right', JSON.stringify(dArr))
   ok('箭头理由说清了', /箭头/.test(dArr.why || ''), dArr.why)
   const pArrL = createPolicy('advance')
-  const dArrL = pArrL.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, arrowDir: 'left' }, { now: 0 })
+  const dArrL = pArrL.decide({ motion: 0.01, hudKick: 0, hudBright: 0.08, progress: 0.5, arrowDir: 'left' }, { now: 0 })
   ok('箭头向左 → 往左走', dArrL.action === 'move' && dArrL.dir === 'left', JSON.stringify(dArrL))
 
   // ㉗b 箭头检测器：用真实画面切片做回归（probe/fixtures/arrow-strip.png）
@@ -540,25 +568,25 @@ console.log('\n[6] 自主连玩策略')
 
   // 策略：确认宝箱后要过去开它（而不是继续乱走）
   const pChest = createPolicy('explore')
-  const dChest = pChest.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, chestConfirmed: true, chestX: 0.85, chestAgeMs: 2000 }, { now: 0 })
+  const dChest = pChest.decide({ motion: 0.01, hudKick: 0, hudBright: 0.08, progress: 0.5, chestConfirmed: true, chestX: 0.85, chestAgeMs: 2000 }, { now: 0 })
   ok('宝箱在右侧 → 朝它走', dChest.action === 'move' && dChest.dir === 'right', JSON.stringify(dChest))
   ok('开宝箱的理由写明了', /宝箱/.test(dChest.why || ''), dChest.why)
 
   // 策略层：看见可破坏物就朝它走/打；看见接缝就停下观察（不瞎砍）
   const pEnvFar = createPolicy('explore')
-  const dFar = pEnvFar.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, destructible: 3, destructibleX: 0.8 }, { now: 0 })
+  const dFar = pEnvFar.decide({ motion: 0.01, hudKick: 0, hudBright: 0.08, progress: 0.5, destructible: 3, destructibleX: 0.8 }, { now: 0 })
   ok('可破坏物在右侧 → 走过去', dFar.action === 'move' && dFar.dir === 'right', JSON.stringify(dFar))
   const pEnvNear = createPolicy('explore')
-  const dNear = pEnvNear.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, destructible: 3, destructibleX: 0.5 }, { now: 0 })
+  const dNear = pEnvNear.decide({ motion: 0.01, hudKick: 0, hudBright: 0.08, progress: 0.5, destructible: 3, destructibleX: 0.5 }, { now: 0 })
   ok('可破坏物在跟前 → 打它', dNear.action === 'attack', JSON.stringify(dNear))
   ok('打可破坏物的理由说清了', /可破坏物/.test(dNear.why || ''), dNear.why)
   // 隐藏房间（宝箱都在里面）⇒ 接缝 = 入口候选，要过去试探而不是站着看
   const pSeam = createPolicy('explore')
-  const dSeamFar = pSeam.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, seam: 40, seamX: 0.8 }, { now: 0 })
+  const dSeamFar = pSeam.decide({ motion: 0.01, hudKick: 0, hudBright: 0.08, progress: 0.5, seam: 40, seamX: 0.8 }, { now: 0 })
   ok('接缝在右侧 → 走过去', dSeamFar.action === 'move' && dSeamFar.dir === 'right', JSON.stringify(dSeamFar))
   ok('接缝的理由提到隐藏房间', /隐藏房间/.test(dSeamFar.why || ''), dSeamFar.why)
   const pSeam2 = createPolicy('explore')
-  const dSeamNear = pSeam2.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, seam: 40, seamX: 0.5 }, { now: 0 })
+  const dSeamNear = pSeam2.decide({ motion: 0.01, hudKick: 0, hudBright: 0.08, progress: 0.5, seam: 40, seamX: 0.5 }, { now: 0 })
   ok('贴到接缝 → 打一下试探暗门', dSeamNear.action === 'attack', JSON.stringify(dSeamNear))
   ok('试探的理由提到暗门', /暗门/.test(dSeamNear.why || ''), dSeamNear.why)
 
@@ -566,7 +594,7 @@ console.log('\n[6] 自主连玩策略')
   const pNoProbe = createPolicy('explore')
   let blind = 0
   for (let i = 0; i < 60; i++) {
-    const d = pNoProbe.decide({ motion: 0.2, hudKick: 0, hudBright: 0.08, progress: 0.5, destructible: 0, seam: 0 }, { now: i * 400 })
+    const d = pNoProbe.decide({ motion: 0.01, hudKick: 0, hudBright: 0.08, progress: 0.5, destructible: 0, seam: 0 }, { now: i * 400 })
     if (d.action === 'attack' && /可疑/.test(d.why || '')) blind++
   }
   ok('不再有「对可疑位置盲砍」', blind === 0, String(blind))
