@@ -394,10 +394,10 @@ console.log('\n[6] 自主连玩策略')
   // 第 2 下是**跳**（2026-10-24 起阶梯里不再有 Enter —— 看不见提示框时按它只可能打开菜单）
   const d2 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2000 })
   ok('静止第 2 次 → 跳（阶梯里没有 Enter）', d2.action === 'jump', JSON.stringify(d2))
-  // 第 3 下是**跳 + 向上冲刺**（2026-10-24：部分场景的入口在空中，普通跳够不到）
+  // 第 3 下是**跳 + 空中上冲**（2026-10-24 实测：地面直接按 W+O 只会朝右冲，必须先跳）
   const dStuck3 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2400 })
-  ok('静止第 3 次 → 跳 + 向上冲刺（够空中的入口）',
-    dStuck3.action === 'jump' && dStuck3.followUp?.action === 'dash' && dStuck3.followUp?.dir === 'up',
+  ok('静止第 3 次 → 跳 + 空中上冲',
+    dStuck3.action === 'combo' && dStuck3.keys === 'k|w+o',
     JSON.stringify(dStuck3))
   // 第 4 下才认输掉头（阶梯是「退一步 → 跳 → 跳+上冲」三步无损试探）
   const dStuck4 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2800 })
