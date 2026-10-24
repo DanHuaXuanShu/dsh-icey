@@ -215,12 +215,12 @@ console.log('\n[6] 自主连玩策略')
   const p1 = createPolicy('advance')
   const d1 = p1.decide({ motion: 0, hudKick: 0 }, { now: 0 })
   ok('静止第 1 次 → 反向挪（不是继续走）', d1.action === 'move' && d1.dir === 'left', JSON.stringify(d1))
-  // 第 2 下是**通用互动键 Enter**（PlayerPrefs 里叫 Search）
+  // 第 2 下是**跳**（2026-10-24 起阶梯里不再有 Enter —— 看不见提示框时按它只可能打开菜单）
   const d2 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2000 })
-  ok('静止第 2 次 → 按 Enter（通用互动键）', d2.action === 'interact', JSON.stringify(d2))
-  // 第 3 下是跳（Enter 刚按过，别连点）
+  ok('静止第 2 次 → 跳（阶梯里没有 Enter）', d2.action === 'jump', JSON.stringify(d2))
+  // 第 3 下是重击
   const dStuck3 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2400 })
-  ok('静止第 3 次 → 跳（Enter 刚按过）', dStuck3.action === 'jump', JSON.stringify(dStuck3))
+  ok('静止第 3 次 → 重击', dStuck3.action === 'heavy', JSON.stringify(dStuck3))
   ok('Enter 有节流（刚按过不会连点）', p1.decide({ motion: 0, hudKick: 0 }, { now: 2500 }).action !== 'interact', 'throttled')
 
   // ⑥ 策略：HUD 在跳 → 打架，出攻击/重击
@@ -316,12 +316,15 @@ console.log('\n[6] 自主连玩策略')
   }
   const kinds = seq.map((d) => (d.action === 'move' ? 'back' : d.action === 'heavy' ? 'attack' : d.action))
   ok('阶梯里第一下是退一步', kinds[0] === 'back', kinds.join(','))
-  ok('阶梯里会出现按确认', kinds.includes('interact'), kinds.join(','))
+  // 2026-10-24 起阶梯里不再有 Enter：看不见提示框时按它只可能白按或打开菜单
+  ok('阶梯里不会按确认（Enter 只由提示框驱动）', !kinds.includes('interact'), kinds.join(','))
   ok('阶梯里会出现跳', kinds.includes('jump'), kinds.join(','))
   ok('阶梯里会出现攻击', kinds.includes('attack'), kinds.join(','))
   ok('不会一直只做同一个动作', new Set(kinds.filter((k) => k !== 'wait')).size >= 3, kinds.join(','))
-  ok('UNSTUCK_LADDER 是 5 步', UNSTUCK_LADDER.length === 5, JSON.stringify(UNSTUCK_LADDER))
-  ok('阶梯第二下是 Enter（唯一的互动键）', UNSTUCK_LADDER[1] === 'interact', JSON.stringify(UNSTUCK_LADDER))
+  ok('脱困阶梯是 3 步（退/跳/重击）', UNSTUCK_LADDER.length === 3, JSON.stringify(UNSTUCK_LADDER))
+  // 2026-10-24 用户问「为什么要按 Enter」→ 盲按 Enter 只可能白按或打开菜单，删掉
+  ok('脱困阶梯里没有 Enter（看不见提示框时按它有害）', !UNSTUCK_LADDER.includes('interact'), JSON.stringify(UNSTUCK_LADDER))
+  ok('脱困阶梯里也没有 Esc（菜单由专门的菜单分支处理）', !UNSTUCK_LADDER.includes('escape'), JSON.stringify(UNSTUCK_LADDER))
   ok('阶梯里不再有 J（J 只是攻击）', !UNSTUCK_LADDER.includes('j'), JSON.stringify(UNSTUCK_LADDER))
 
   // ⑲ 一整轮阶梯都失败 ⇒ 必须「掉头」而不是继续撞；且方向真的翻了
@@ -347,8 +350,9 @@ console.log('\n[6] 自主连玩策略')
   ok('打架时会用追击（chase）', seqFight.some((d) => d.action === 'chase'), [...new Set(seqFight.map((d) => d.action))].join(','))
   ok('打架时也会闪现（dash）', seqFight.some((d) => d.action === 'dash'), [...new Set(seqFight.map((d) => d.action))].join(','))
 
-  // 阶梯最后一步必须是 Esc：万一 Enter 打开了招式升级界面（那里的 Enter 是花钱升级），Esc 能安全退出
-  ok('阶梯最后一步是 Esc（安全退出菜单）', UNSTUCK_LADDER[UNSTUCK_LADDER.length - 1] === 'escape', JSON.stringify(UNSTUCK_LADDER))
+  // 菜单里的 Esc 由专门的菜单分支负责（见「停在菜单里怎么办」那组测试），
+  // 脱困阶梯里不该再有 Esc：本来没菜单却按 Esc，反而会把暂停菜单打开。
+  ok('脱困阶梯里不含 Esc', !UNSTUCK_LADDER.includes('escape'), JSON.stringify(UNSTUCK_LADDER))
 
   // ㉑ 看到互动提示框就直接按 Enter（这是最可信的「这里能互动」信号）
   //    实测：无提示 0.019%，有提示 0.23~0.40%
