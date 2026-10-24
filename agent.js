@@ -285,6 +285,12 @@ export function apply(ctx) {
       + '  execute（ms）—— 处决（L）\n'
       + '  jump（ms）—— 跳（空格）\n'
       + '  interact（ms）—— 互动/确认（Enter）\n'
+      + '  combo（keys）—— 连段，按给定键序列出招。这是打**取消衔接**（柔化）唯一的方式\n'
+      + '      键：j=J i=I l=L u=U o=冲刺 k=跳(空格) w/s/a/d=方向 8/9=强化技\n'
+      + '      `s+j`=按住↓点J(凝滞)  `w+j`=按住↑点J(激发)  `a|b`=分阶段(打一半切走)\n'
+      + '      例：`jjjji`=颤振  `jjji`=迭影  `jjiii`=磁阱  `jjj|s+j`=小迭影收刀\n'
+      + '⚠️ 连段里的 I 必须短按：长按 I 是「刺击+位移」，**会断掉后面的连招**。\n'
+      + '⚠️ 站在强化台旁边时**别按空格**——空格在那里会打开强化界面（里面 J 是花钱升级）。\n'
       + '  pause —— 暂停/恢复（Esc）\n'
       + '  menu（item=resume/exit/back）—— 菜单里选一项\n'
       + '⚠️ 按键会**先把游戏窗口抢到前台**（ICEY 只接受前台按键），会打断你正在做的事。\n'
@@ -293,7 +299,11 @@ export function apply(ctx) {
       action: {
         type: 'string',
         required: true,
-        description: 'move / dash / attack / heavy / execute / jump / interact / pause / menu',
+        description: 'move / dash / attack / heavy / execute / jump / interact / combo / pause / menu',
+      },
+      keys: {
+        type: 'string',
+        description: '连段的键序列（combo 用），如 "jjji"、"jjj|s+j"、"w+j|s+j"、"k|s+j"',
       },
       dir: { type: 'string', description: '方向：up / down / left / right（move、dash 用）' },
       ms: { type: 'integer', description: '按住多少毫秒（40–5000）；move 默认 500，其它默认 120' },
@@ -305,7 +315,7 @@ export function apply(ctx) {
       const s = session()
       const wantDiff = args.diff !== false
       const res = await s.act(
-        { action: args.action, dir: args.dir, ms: args.ms, item: args.item },
+        { action: args.action, dir: args.dir, ms: args.ms, item: args.item, keys: args.keys },
         { withDiff: wantDiff },
       )
       if (res.ok === false) {
