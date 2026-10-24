@@ -392,10 +392,16 @@ export function apply(ctx) {
       maxFrames: { type: 'integer', description: '最多留几张截图（0–4，默认 3；每张都花 token）' },
       dir: { type: 'string', description: '推进方向 right / left，默认 right' },
       historyLen: { type: 'integer', description: '带回来多少条「最近动作」历史（0–20，默认 8；0 = 不带）' },
+      brief: {
+        type: 'boolean',
+        description: 'true = 不带截图，只回结构化事件摘要 + 指标（省 token，适合「先跑一段看看情况」）。'
+          + '默认 false 带图。⚠️ 不带图就看不到画面细节，判不准的时候还是得开图看一眼。',
+      },
     },
     output: imageOutput,
     async execute(args) {
       const s = session()
+      const brief = args.brief === true
       const st = await s.status()
       if (!st.running) {
         return { text: `没接上游戏，没法连玩。${st.health?.reason || ''}\n下一步：icey_start。`, image: null }
@@ -404,7 +410,7 @@ export function apply(ctx) {
         seconds: args.seconds,
         preset: args.preset,
         captureEvery: args.captureEvery,
-        maxFrames: args.maxFrames,
+        maxFrames: brief ? 0 : args.maxFrames,
         dir: args.dir,
         historyLen: args.historyLen,
       })
@@ -413,6 +419,22 @@ export function apply(ctx) {
       }
 
       const lines = [summarizeRun(res)]
+      // 跨调用记忆：上一轮干了什么、卡在哪。模型每次调用都是「第一次看这个世界」，
+      // 不给它这条，它会重复上一轮犯的错。
+      if (res.previous) {
+        const { describeRun } = await import('./lib/run-history.mjs')
+        const prev = describeRun(res.previous)
+        if (prev) lines.push(`上一轮：${prev}`)
+      }
+      // 结构化事件摘要：urgent 置顶、notable 其次，info 只计数不展开。
+      // 这是给「不想看每帧」的模型准备的——不传 brief 也给，因为它比 events 那串字符串更有层次。
+      if (res.eventDigest) {
+        lines.push('途中事件（按轻重排）：', ...res.eventDigest.split('\n').map((l) => `  ${l}`))
+      }
+      if (res.eventByKind && Object.keys(res.eventByKind).length) {
+        const brief2 = Object.entries(res.eventByKind).map(([k, v]) => `${k}×${v}`).join(' ')
+        lines.push(`事件计数：${brief2}`)
+      }
       // 最近动作历史（参考 GameScaling 的 history_len）：让模型跨调用也能接上上文
       if (Array.isArray(res.history) && res.history.length) {
         const tail = res.history.slice(-6).map((h) => {
@@ -427,7 +449,7 @@ export function apply(ctx) {
       // 多图很吃 token，而这一轮的主要信息在摘要里。
       let image = null
       let extraImage = null
-      if (res.frames?.length) {
+      if (!brief && res.frames?.length) {
         try {
           const refs = await ctx.attachments.saveImages(
             res.frames.map((f, i) => ({
@@ -452,6 +474,7 @@ export function apply(ctx) {
       if (res.safetyPaused) {
         lines.push('⚠️ 结束时还在战斗，我按了 Esc 把游戏暂停了（不暂停的话怪会继续打，真被打死过两次）。接手前先按一次 Esc 继续。')
       }
+      if (brief) lines.push('（brief 模式：这轮没带截图，只有事件和指标。要看画面就再调一次不带 brief。）')
       lines.push('下一步：看截图判断进展；要继续就再调一次 icey_play，想精确操作就 icey_act。')
       return { text: lines.join('\n'), image, extraImage }
     },

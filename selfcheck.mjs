@@ -123,6 +123,107 @@ console.log('\n[2b] 分层')
   ok('全亮画面：亮像素占比 = 1', Math.abs(a.brightRatio - 1) < 1e-9, String(a.brightRatio))
 }
 
+/* ---------- 2c. 事件层 ---------- */
+console.log('\n[2c] 事件层')
+{
+  // 为什么要有这一层：连玩时插件每秒转十几圈，模型一次决策要几秒。
+  // 要让模型「几秒钟的思考」影响插件「接下来几十秒的行为」，前提是插件把
+  // 发生了什么说清楚——带类型、带等级、能去重、能跨回合存。
+  const { EventLog, KINDS, LEVELS } = await import('./lib/events.mjs')
+
+  ok('事件 kind 是一份明确清单（不是散字符串）', Array.isArray(KINDS) && KINDS.length >= 8, String(KINDS.length))
+  ok('等级分三档 info/notable/urgent', LEVELS.length === 3 && LEVELS[0] === 'info', LEVELS.join('/'))
+
+  const log = new EventLog({ limit: 50 })
+  log.push('fight-start', 'notable', '第 4s 进入战斗', {}, 4)
+  log.push('damage', 'notable', '第 5s 掉血 8%', { to: 0.64 }, 5, 0.08)
+  log.push('damage', 'notable', '第 5.5s 掉血 10%', { to: 0.62 }, 5.5, 0.10)
+  ok('同类事件在去重窗口内合并成一条', log.length === 2, String(log.length))
+  ok('合并时更严重的那次替换文案和数值', log.items[1].repeat === 1 && log.items[1].data.to === 0.62, JSON.stringify(log.items[1]))
+
+  // 实战踩过的坑：12%（notable）→ 23%（urgent）→ 12%（notable）合并后，
+  // 曾出现「[urgent] 跌 12%」——等级和文案对不上，会骗模型。
+  log.push('damage', 'notable', '第 5.8s 掉血 9%', { to: 0.63 }, 5.8, 0.09)
+  ok('不够严重的不改写摘要文案（只加重复计数）',
+    log.items[1].data.to === 0.62 && log.items[1].repeat === 2, JSON.stringify(log.items[1]))
+
+  const mixed = new EventLog()
+  mixed.push('damage', 'notable', '跌 12%', { drop: 0.12 }, 7, 0.12)
+  mixed.push('damage', 'urgent', '跌 23%', { drop: 0.23 }, 9, 0.23)
+  mixed.push('damage', 'notable', '跌 12%', { drop: 0.12 }, 11, 0.12)
+  ok('合并后等级和文案一致（不会出现 urgent 顶着 12%）',
+    mixed.items[0].level === 'urgent' && mixed.items[0].text.includes('23'), JSON.stringify(mixed.items[0]?.text))
+
+  log.push('damage', 'notable', '第 9s 掉血 8%', { to: 0.60 }, 9, 0.08)
+  ok('超过去重窗口后算新的一条', log.count('damage') === 2, String(log.count('damage')))
+
+  const order = new EventLog()
+  order.push('scene', 'info', '第 20s 画面剧变', {}, 20)
+  order.push('blocked', 'urgent', '第 18s 这处过不去', {}, 18)
+  order.push('chest', 'notable', '第 6s 确认到宝箱', {}, 6)
+  const dg = order.digest({ minLevel: 'info' })
+  ok('摘要按 urgent → notable → info 排（不是按时间）',
+    dg.indexOf('[urgent]') === 0 &&
+    dg.indexOf('[notable]') > dg.indexOf('[urgent]') &&
+    dg.indexOf('[info]') > dg.indexOf('[notable]'),
+    dg.split('\n')[0])
+  ok('摘要能按等级过滤（只给 notable 以上）',
+    !order.digest({ minLevel: 'notable' }).includes('[info]'), '')
+
+  const capped = new EventLog({ limit: 4 })
+  capped.push('blocked', 'urgent', '第 1s 卡死', {}, 1)
+  for (let i = 2; i <= 8; i++) capped.push('scene', 'info', `第 ${i}s 画面剧变`, {}, i)
+  ok('超限时优先丢 info、urgent 留着',
+    capped.length <= 4 && capped.items.some((e) => e.level === 'urgent'), String(capped.length))
+
+  const bad = new EventLog()
+  const unknown = bad.push('not-a-real-kind', 'weird-level', '测试未知事件')
+  ok('未知 kind / 等级不崩，降级成 info', bad.length === 1 && unknown.level === 'info', JSON.stringify(unknown))
+
+  const round = EventLog.fromJSON(JSON.parse(JSON.stringify(log.toJSON())))
+  ok('toJSON/fromJSON 往返不丢条目',
+    round.length === log.length && round.count('damage') === log.count('damage'), `${round.length}/${log.length}`)
+  ok('fromJSON 遇到坏数据不抛',
+    EventLog.fromJSON(null).length === 0 && EventLog.fromJSON({ items: 'x' }).length === 0, '')
+}
+
+/* ---------- 2d. 跨回合记忆 ---------- */
+console.log('\n[2d] 跨回合记忆')
+{
+  // 为什么要有：icey_play 是独立工具调用，模型每次都是「第一次看这个世界」，
+  // 不给它上一轮的记忆，它会重复上一轮犯的错。
+  // ⚠️ 这个测试必须用临时 DSH_HOME，绝不能写真实的 ~/.dsh/icey/last-runs.json。
+  const { mkdtempSync, rmSync, writeFileSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const tmpHome = mkdtempSync(join(tmpdir(), 'icey-hist-'))
+  const savedHome = process.env.DSH_HOME
+  process.env.DSH_HOME = tmpHome
+  try {
+    const h = await import('./lib/run-history.mjs')
+    ok('存档路径落在 DSH_HOME 下', h.historyPath().startsWith(tmpHome), h.historyPath())
+    ok('没有存档时返回 null 而不是崩', h.previousRun() === null && h.loadRuns().length === 0, '')
+
+    h.saveRun({ at: '2026-10-24T10:00:00Z', seconds: 30, preset: 'advance', stopped: '玩满 30 秒', eventDigest: '[notable] 第 4s 进入战斗' })
+    h.saveRun({ at: '2026-10-24T10:01:00Z', seconds: 20, preset: 'fight', stopped: '打不过', eventDigest: '[urgent] 第 9s 卡死' })
+    ok('存一轮能读回来', h.loadRuns().length === 2, String(h.loadRuns().length))
+    ok('previousRun 是最后存的那轮', h.previousRun()?.preset === 'fight', JSON.stringify(h.previousRun()?.preset))
+
+    for (let i = 0; i < 4; i++) h.saveRun({ at: `2026-10-24T11:0${i}:00Z`, seconds: 10, preset: 'advance' })
+    ok('只留最近 3 轮（老的不无限堆积）', h.loadRuns().length === 3, String(h.loadRuns().length))
+
+    const desc = h.describeRun(h.previousRun())
+    ok('能压成一行文字给模型看', desc.length > 0 && desc.includes('advance'), desc)
+
+    writeFileSync(h.historyPath(), '{ 这不是 JSON', 'utf8')
+    ok('存档被写坏时不崩、当空的处理', h.loadRuns().length === 0 && h.previousRun() === null, '')
+  } finally {
+    if (savedHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = savedHome
+    rmSync(tmpHome, { recursive: true, force: true })
+  }
+}
+
 /* ---------- 3. 控制映射 ---------- */
 console.log('\n[3] 控制映射')
 {
