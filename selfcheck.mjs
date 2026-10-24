@@ -309,6 +309,44 @@ console.log('\n[2f] 游戏无响应检测')
   ok('冻结阈值是个合理的秒数（1 帧≈0.7s）', FREEZE_FRAMES >= 4 && FREEZE_FRAMES <= 12, String(FREEZE_FRAMES))
 }
 
+/* ---------- 2g. 批量动作简写解析 ---------- */
+console.log('\n[2g] 批量动作简写解析')
+{
+  // 一次 icey_act 要付一次模型往返（6~12 秒），所以支持 sequence 一次走一串。
+  // 这里验证「写的简写」和「planAction 吃的 input」对得上——
+  // 解析器返回的东西必须能直接喂 planAction，否则批量模式到执行那一步才炸。
+  const { parseActionSpec, planAction, MAX_SEQUENCE } = await import('./lib/control.mjs')
+  const cases = [
+    ['jjji', { action: 'combo', keys: 'jjji' }],
+    ['jjj|s+j', { action: 'combo', keys: 'jjj|s+j' }],
+    ['move:right:400', { action: 'move', dir: 'right', ms: 400 }],
+    ['dash:up:200', { action: 'dash', dir: 'up', ms: 200 }],
+    ['chase:left:260', { action: 'chase', dir: 'left', ms: 260 }],
+    ['combo:jjiii', { action: 'combo', keys: 'jjiii' }],
+    ['menu:resume', { action: 'menu', item: 'resume' }],
+    ['jump', { action: 'jump' }],
+    ['wait:300', { action: 'wait', ms: 300 }],
+  ]
+  for (const [spec, want] of cases) {
+    eq(`解析 ${spec}`, parseActionSpec(spec), want)
+  }
+
+  // 解析出来的每一项都必须能被 planAction 接受（wait 除外：它不是按键动作）
+  let unplannable = []
+  for (const [spec] of cases) {
+    const input = parseActionSpec(spec)
+    if (!input || input.action === 'wait') continue
+    try { planAction(input) } catch (e) { unplannable.push(`${spec}: ${e.message}`) }
+  }
+  ok('每个简写都能直接喂给 planAction', unplannable.length === 0, unplannable.join(' | '))
+
+  // 无效写法必须返回 null，不能猜
+  for (const bad of ['', '   ', 'nonsense', 'move:', 'dash:', 'teleport:up', '1234567890x']) {
+    ok(`无效写法 ${JSON.stringify(bad)} 返回 null`, parseActionSpec(bad) === null, String(parseActionSpec(bad)))
+  }
+  ok('sequence 有上限（防手滑写一大串）', MAX_SEQUENCE > 0 && MAX_SEQUENCE <= 20, String(MAX_SEQUENCE))
+}
+
 /* ---------- 3. 控制映射 ---------- */
 console.log('\n[3] 控制映射')
 {

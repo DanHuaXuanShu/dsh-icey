@@ -17,6 +17,8 @@
 import { loadHostDeps } from './lib/hostdeps.mjs'
 import { session } from './lib/session.mjs'
 import { summarizeRun } from './lib/autoplay.mjs'
+// 批量动作：把「一串动作」压进一次工具调用，省掉中间的模型往返（每次 6~12 秒）
+import { parseActionSpec, MAX_SEQUENCE } from './lib/control.mjs'
 
 export const name = 'dsh-icey-agent'
 export const inject = ['tools', 'attachments']
@@ -294,13 +296,21 @@ export function apply(ctx) {
       + '  pause —— 暂停/恢复（Esc）\n'
       + '  menu（item=resume/exit/back）—— 菜单里选一项\n'
       + '⚠️ 按键会**先把游戏窗口抢到前台**（ICEY 只接受前台按键），会打断你正在做的事。\n'
-      + '返回：受理没受理、实际按了什么键、动作后的截图。做完看截图确认角色真的动了。',
+      + '返回：受理没受理、实际按了什么键、动作后的截图。做完看截图确认角色真的动了。\n'
+      + '—— 或者**一次走一串**（省掉中间的模型往返，每步要 6~12 秒）：\n'
+      + '  sequence=["jjji","move:right:400","dash:up:200","wait:150"]，最多 12 个。\n'
+      + '  每项写 "动作:方向:毫秒"，或直接写连段键。批量模式**不返回截图**，要看结果再调 icey_look。',
     parameters: {
       action: {
         type: 'string',
-        required: true,
-        description: 'move / dash / attack / heavy / execute / jump / interact / combo / pause / menu',
+        description: '单个动作：move / dash / attack / heavy / execute / jump / interact / combo / pause / menu（用 sequence 时可不填）',
       },
+      sequence: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '一次执行一串动作（最多 12 个）。每项："jjji"（连段）| "move:right:400" | "dash:up:200" | "chase:left:260" | "combo:jjj|s+j" | "menu:resume" | "jump" | "wait:150"',
+      },
+      gapMs: { type: 'integer', description: '批量模式中动作之间停多少毫秒（默认 120，上限 2000）' },
       keys: {
         type: 'string',
         description: '连段的键序列（combo 用），如 "jjji"、"jjj|s+j"、"w+j|s+j"、"k|s+j"',
@@ -314,6 +324,36 @@ export function apply(ctx) {
     async execute(args) {
       const s = session()
       const wantDiff = args.diff !== false
+
+      // ── 批量模式：一次走完一串，省掉中间的模型往返 ──
+      // 为什么值得：单发一个动作要 6~12 秒（模型往返），三个动作就是 18~36 秒。
+      // 批量之后总共只付一次往返，中间的 gap 只有毫秒级。
+      if (Array.isArray(args.sequence) && args.sequence.length) {
+        const raw = args.sequence.slice(0, MAX_SEQUENCE)
+        const g = Number(args.gapMs)
+        const gap = Number.isFinite(g) ? Math.max(0, Math.min(2000, g)) : 120
+        const done = []
+        const bad = []
+        for (const spec of raw) {
+          const input = parseActionSpec(spec)
+          if (!input) { bad.push(`${spec}（看不懂这个写法）`); continue }
+          try {
+            const r = await s.act(input, { withDiff: false })
+            if (r.ok === false) { bad.push(`${spec}（${r.error}）`); break }
+            done.push(`${spec} → ${r.desc || input.action}`)
+          } catch (e) {
+            bad.push(`${spec}（${e?.message || e}）`)
+            break
+          }
+          if (gap) await new Promise((r) => setTimeout(r, gap))
+        }
+        const lines = [`一次执行了 ${done.length}/${raw.length} 个动作：`]
+        for (const d of done) lines.push('  · ' + d)
+        if (bad.length) lines.push(`没执行成：${bad.join('；')}`)
+        lines.push('（批量模式不返回截图）下一步：icey_look 看结果。')
+        return { text: lines.join('\n'), image: null }
+      }
+
       const res = await s.act(
         { action: args.action, dir: args.dir, ms: args.ms, item: args.item, keys: args.keys },
         { withDiff: wantDiff },
