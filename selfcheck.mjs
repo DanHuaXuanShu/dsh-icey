@@ -218,9 +218,10 @@ console.log('\n[6] 自主连玩策略')
   // 第 2 下是**跳**（2026-10-24 起阶梯里不再有 Enter —— 看不见提示框时按它只可能打开菜单）
   const d2 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2000 })
   ok('静止第 2 次 → 跳（阶梯里没有 Enter）', d2.action === 'jump', JSON.stringify(d2))
-  // 第 3 下是重击
+  // 第 3 下就认输掉头（阶梯只有「退一步 → 跳」两步无损试探）
   const dStuck3 = p1.decide({ motion: 0, hudKick: 0 }, { now: 2400 })
-  ok('静止第 3 次 → 重击', dStuck3.action === 'heavy', JSON.stringify(dStuck3))
+  ok('静止第 3 次 → 掉头（两步试探都没用就认输）', dStuck3.action === 'move' && /掉头/.test(dStuck3.why || ''), JSON.stringify(dStuck3))
+  ok('脱困时不挥刀（别盲砍可疑位置）', !/^(heavy|attack)$/.test(dStuck3.action), String(dStuck3.action))
   ok('Enter 有节流（刚按过不会连点）', p1.decide({ motion: 0, hudKick: 0 }, { now: 2500 }).action !== 'interact', 'throttled')
 
   // ⑥ 策略：HUD 在跳 → 打架，出攻击/重击
@@ -319,9 +320,10 @@ console.log('\n[6] 自主连玩策略')
   // 2026-10-24 起阶梯里不再有 Enter：看不见提示框时按它只可能白按或打开菜单
   ok('阶梯里不会按确认（Enter 只由提示框驱动）', !kinds.includes('interact'), kinds.join(','))
   ok('阶梯里会出现跳', kinds.includes('jump'), kinds.join(','))
-  ok('阶梯里会出现攻击', kinds.includes('attack'), kinds.join(','))
-  ok('不会一直只做同一个动作', new Set(kinds.filter((k) => k !== 'wait')).size >= 3, kinds.join(','))
-  ok('脱困阶梯是 3 步（退/跳/重击）', UNSTUCK_LADDER.length === 3, JSON.stringify(UNSTUCK_LADDER))
+  // 2026-10-24 去掉重击：那和「别盲砍可疑位置」冲突，可破坏物交给接缝分支（有依据才打）
+  ok('脱困时不挥刀（不盲砍可疑位置）', !kinds.includes('attack') && !UNSTUCK_LADDER.includes('heavy'), kinds.join(','))
+  ok('脱困会掉头（走不通就换方向）', kinds.includes('back') && kinds.includes('jump'), kinds.join(','))
+  ok('脱困阶梯是 2 步（退/跳）', UNSTUCK_LADDER.length === 2, JSON.stringify(UNSTUCK_LADDER))
   // 2026-10-24 用户问「为什么要按 Enter」→ 盲按 Enter 只可能白按或打开菜单，删掉
   ok('脱困阶梯里没有 Enter（看不见提示框时按它有害）', !UNSTUCK_LADDER.includes('interact'), JSON.stringify(UNSTUCK_LADDER))
   ok('脱困阶梯里也没有 Esc（菜单由专门的菜单分支处理）', !UNSTUCK_LADDER.includes('escape'), JSON.stringify(UNSTUCK_LADDER))
