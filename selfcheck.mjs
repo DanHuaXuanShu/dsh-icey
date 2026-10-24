@@ -331,20 +331,76 @@ console.log('\n[2g] 批量动作简写解析')
     eq(`解析 ${spec}`, parseActionSpec(spec), want)
   }
 
-  // 解析出来的每一项都必须能被 planAction 接受（wait 除外：它不是按键动作）
+  // 解析出来的每一项都必须能被 planAction 接受。
+  // ⚠️ wait 是**例外**：它不按键，由 agent.js 的批量层直接 sleep，不进 planAction。
+  //    2026-10-24 这里曾经写成 `if (input.action === 'wait') continue` 悄悄跳过，
+  //    结果真机上 `wait:300` 报「动作不认识：wait」——测试自己骗了自己。
+  //    现在把「跳过」这件事显式断言出来，不再默默绕过。
   let unplannable = []
+  let waitSkipped = 0
   for (const [spec] of cases) {
     const input = parseActionSpec(spec)
-    if (!input || input.action === 'wait') continue
+    if (!input) continue
+    if (input.action === 'wait') { waitSkipped++; continue }
     try { planAction(input) } catch (e) { unplannable.push(`${spec}: ${e.message}`) }
   }
-  ok('每个简写都能直接喂给 planAction', unplannable.length === 0, unplannable.join(' | '))
+  ok('每个按键简写都能直接喂给 planAction', unplannable.length === 0, unplannable.join(' | '))
+  ok('wait 是特殊项：不经过 planAction（批量层自己 sleep）',
+    waitSkipped === 1 && parseActionSpec('wait:300').action === 'wait', `skipped=${waitSkipped}`)
 
   // 无效写法必须返回 null，不能猜
   for (const bad of ['', '   ', 'nonsense', 'move:', 'dash:', 'teleport:up', '1234567890x']) {
     ok(`无效写法 ${JSON.stringify(bad)} 返回 null`, parseActionSpec(bad) === null, String(parseActionSpec(bad)))
   }
   ok('sequence 有上限（防手滑写一大串）', MAX_SEQUENCE > 0 && MAX_SEQUENCE <= 20, String(MAX_SEQUENCE))
+}
+
+/* ---------- 2h. 战斗屏障 ---------- */
+console.log('\n[2h] 战斗屏障')
+{
+  // 2026-10-24 用户说明的机制：战斗时场景**两端**升起能量墙，清完敌人才消失。
+  // 它是「这场仗还没打完」最硬的证据 —— 敌人倒地不动、HUD 不跳时只有它还亮着。
+  // 不加这条，插件会以为打完了 → 往前走 → 撞墙 → 判死路 → 掉头。
+  const mod = await import('./lib/autoplay.mjs')
+  const { analyzeEnvironment, createPolicy } = mod
+  const W = 240, H = 180
+  const wallW = 24   // 约画面 10%，比两列网格宽一点，确保被算进边缘列
+
+  const mk = (side) => {
+    const buf = Buffer.alloc(W * H * 4, 30)   // 暗底
+    const paint = (x0, x1) => {
+      for (let y = 0; y < H; y++) {
+        for (let x = x0; x < x1; x++) {
+          const i = (y * W + x) * 4
+          buf[i] = 110; buf[i + 1] = 230; buf[i + 2] = 255   // 青白发光
+        }
+      }
+    }
+    if (side === 'left' || side === 'both') paint(0, wallW)
+    if (side === 'right' || side === 'both') paint(W - wallW, W)
+    return buf
+  }
+
+  const none = analyzeEnvironment(mk('none'), W, H)
+  const left = analyzeEnvironment(mk('left'), W, H)
+  const right = analyzeEnvironment(mk('right'), W, H)
+  const both = analyzeEnvironment(mk('both'), W, H)
+
+  ok('没有屏障 → barrier=false', none.barrier === false, `edge=${none.barrierEdge}`)
+  ok('左边有屏障 → 检出', left.barrier === true && left.barrierLeft === true, `L=${left.barrierLeft} edge=${left.barrierEdge}`)
+  ok('右边有屏障 → 检出', right.barrier === true && right.barrierRight === true, `R=${right.barrierRight} edge=${right.barrierEdge}`)
+  ok('两端都有 → 检出', both.barrier === true, `edge=${both.barrierEdge}`)
+
+  // 最关键的一条：屏障亮着时，即使画面完全不动，也不能判「这条路走不通」去掉头。
+  const pBar = createPolicy('advance')
+  const dB = pBar.decide({ motion: 0, hudKick: 0, progress: 0, barrier: true }, { now: 0 })
+  ok('屏障亮 + 画面不动 → 不判死路掉头', !/掉头/.test(dB.why || ''), JSON.stringify(dB))
+
+  // 对照：没有屏障时，同样的「画面不动」应该进脱困阶梯（说明上面的差异确实来自 barrier）
+  const pNo = createPolicy('advance')
+  const dN = pNo.decide({ motion: 0, hudKick: 0, progress: 0, barrier: false }, { now: 0 })
+  const looksStuck = /反向挪|跳一下|掉头|画面几乎不动/.test(dN.why || '')
+  ok('对照：没屏障时画面不动 → 会进脱困处理', looksStuck, JSON.stringify(dN))
 }
 
 /* ---------- 3. 控制映射 ---------- */

@@ -337,6 +337,14 @@ export function apply(ctx) {
         for (const spec of raw) {
           const input = parseActionSpec(spec)
           if (!input) { bad.push(`${spec}（看不懂这个写法）`); continue }
+          // wait 不按键，只等游戏 —— 走不到 planAction（它不是动作）。
+          // 2026-10-24 实测踩过：selfcheck 里那条「每个简写都能喂 planAction」
+          // 当时主动 skip 了 wait，等于测试自己骗自己。
+          if (input.action === 'wait') {
+            await new Promise((r) => setTimeout(r, input.ms))
+            done.push(`${spec} → 等了 ${input.ms}ms`)
+            continue
+          }
           try {
             const r = await s.act(input, { withDiff: false })
             if (r.ok === false) { bad.push(`${spec}（${r.error}）`); break }
