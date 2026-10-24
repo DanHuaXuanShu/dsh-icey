@@ -439,6 +439,9 @@ export function apply(ctx) {
           lines.push(`（途中截图没存成：${e?.message || e}）`)
         }
       }
+      if (res.safetyPaused) {
+        lines.push('⚠️ 结束时还在战斗，我按了 Esc 把游戏暂停了（不暂停的话怪会继续打，真被打死过两次）。接手前先按一次 Esc 继续。')
+      }
       lines.push('下一步：看截图判断进展；要继续就再调一次 icey_play，想精确操作就 icey_act。')
       return { text: lines.join('\n'), image, extraImage }
     },
