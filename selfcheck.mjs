@@ -683,7 +683,9 @@ console.log('\n[6] 自主连玩策略')
   ok('分析帧宽度会被钳制', cfgMod.normalizeConfig({ analysisWidth: 9999 }).analysisWidth === 800 && cfgMod.normalizeConfig({ analysisWidth: 1 }).analysisWidth === 320, '')
 
   // ㉗ 连段：出招表来自游戏内招式表，打架时真的会打出来
-  ok('连段表非空且都是合法键（含 a/d、o、组合符 + 与分阶段 |）', COMBOS.length >= 5 && COMBOS.every((c) => /^[jilu89wsado+|]+$/.test(c)), JSON.stringify(COMBOS))
+  ok('连段表非空且都是合法键（含 a/d、o、k=跳跃、组合符 + 与分阶段 |）', COMBOS.length >= 5 && COMBOS.every((c) => /^[jilu89wsadok+|]+$/.test(c)), JSON.stringify(COMBOS))
+  // k = 跳跃（空格）：技巧 4「跳凝滞」和 5「万能收刀」都要用跳当起手
+  ok('k 映射到跳跃键', (await import('./lib/control.mjs')).planAction({ action: 'combo', keys: 'k' }).steps[0].key === ' ', '')
   const pComb = createPolicy('advance')
   let sawCombo = null
   for (let i = 0; i < 40; i++) {
