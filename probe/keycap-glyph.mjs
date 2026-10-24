@@ -2,7 +2,7 @@
 // 目的：区分 L（处决）和 U/E（其它键帽）—— 它们外框一模一样，只有字母不同。
 import { readFileSync } from 'node:fs'
 import { decodePng } from '../lib/png-decode.mjs'
-import { findExecuteKeycap } from '../lib/execute-keycap.mjs'
+import { findExecuteKeycap } from '../lib/ui/execute-keycap.mjs'
 
 const lum = (rgba, W, x, y) => {
   const i = (y * W + x) * 4

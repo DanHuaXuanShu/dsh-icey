@@ -90,6 +90,39 @@ console.log('\n[2] 像素加工')
   ok('diffRatio 有差异 > 0', diffRatio(src, other) > 0)
 }
 
+/* ---------- 2b. 分层（界面层 / 世界层） ---------- */
+console.log('\n[2b] 分层')
+{
+  // 2026-10-24 拆的分层，参考 GameScaling 论文的 interface phase / world phase：
+  //   界面层（lib/ui/）跨游戏通用，世界层（lib/games/icey/）每个游戏一份。
+  // 规则：**单向依赖** games/ → ui/ → 无。ui/ 里出现 games/ 就是写脏了。
+  const fsSync2 = await import('node:fs')
+  const pathSync = await import('node:path')
+  const uiDir = 'lib/ui'
+  const uiFiles = fsSync2.existsSync(uiDir)
+    ? fsSync2.readdirSync(uiDir).filter((f) => f.endsWith('.mjs'))
+    : []
+  ok('界面层目录存在且有文件', uiFiles.length >= 3, String(uiFiles.length))
+  const leaks = []
+  for (const f of uiFiles) {
+    const src = fsSync2.readFileSync(pathSync.join(uiDir, f), 'utf8')
+    // 只查 import 语句里的路径，不查注释里提到的文字
+    for (const m of src.matchAll(/from\s+'([^']+)'/g)) {
+      if (m[1].includes('games/') || m[1].includes('../games')) leaks.push(`${f} → ${m[1]}`)
+    }
+  }
+  ok('界面层不依赖任何具体游戏（单向依赖）', leaks.length === 0, leaks.join(', ') || '干净')
+  ok('ICEY 的画面布局在世界层里', fsSync2.existsSync('lib/games/icey/layout.mjs'), '')
+
+  // scan.mjs 必须真的「不含坐标」：拿一组不同的区域传进去都得能算
+  const { regionStats } = await import('./lib/ui/scan.mjs')
+  const fake = Buffer.alloc(64 * 48 * 4, 200)
+  const a = regionStats(fake, 64, 48, { x0: 0, y0: 0, x1: 1, y1: 1 }, { lumMin: 150 })
+  const b = regionStats(fake, 64, 48, { x0: 0.2, y0: 0.2, x1: 0.5, y1: 0.6 }, { lumMin: 150 })
+  ok('区域统计接受任意坐标（不是写死 ICEY 的）', a.count > 0 && b.count > 0 && a.count !== b.count, `${a.count}/${b.count}`)
+  ok('全亮画面：亮像素占比 = 1', Math.abs(a.brightRatio - 1) < 1e-9, String(a.brightRatio))
+}
+
 /* ---------- 3. 控制映射 ---------- */
 console.log('\n[3] 控制映射')
 {
@@ -409,7 +442,7 @@ console.log('\n[6] 自主连玩策略')
   const mkEnv = (fn) => { const b = Buffer.alloc(EW * EH * 4, 0); for (let y = 0; y < EH; y++) for (let x = 0; x < EW; x++) { const i = (y * EW + x) * 4; const [r, g, bl] = fn(x, y); b[i] = r; b[i + 1] = g; b[i + 2] = bl; b[i + 3] = 255 } return b }
   const flat = mkEnv((x, y) => { const v = 60 + (y % 7); return [v, v + 2, v + 6] })
   // 宝箱检测已改成模板匹配（真实样本校准）：把模板贴进一张暗背景里，应该被找到
-  const { CHEST_TEMPLATE } = await import('./lib/chest-template.mjs')
+  const { CHEST_TEMPLATE } = await import('./lib/ui/chest-template.mjs')
   const GW = CHEST_TEMPLATE.frameWidth, GH = Math.round(GW * 116 / 200)
   const stampFrame = (applyTemplate) => {
     const b = Buffer.alloc(GW * GH * 4, 0)
@@ -544,7 +577,7 @@ console.log('\n[6] 自主连玩策略')
   //    合成贴图不行 —— 模板里大量是暗背景像素，贴出来填充率对不上。
   //    素材必须进仓库（.gitignore 里给它开了例外），否则 CI 上跑不了；
   //    万一缺失就**明确跳过**而不是报错，免得把「素材没带」误当成检测器坏了。
-  const { findGuideArrow } = await import('./lib/guide-arrow.mjs')
+  const { findGuideArrow } = await import('./lib/ui/guide-arrow.mjs')
   const { decodePng } = await import('./lib/png-decode.mjs')
   const fsSync = await import('node:fs')
   const FIX_POS = 'probe/fixtures/arrow-strip.png'
@@ -572,7 +605,7 @@ console.log('\n[6] 自主连玩策略')
     if (!fsSync.existsSync(FIX_L)) {
       console.log('  --    跳过处决键帽回归：' + FIX_L + ' 缺失（不影响其它检查）')
     } else {
-      const { findExecuteKeycap } = await import('./lib/execute-keycap.mjs')
+      const { findExecuteKeycap } = await import('./lib/ui/execute-keycap.mjs')
       const lImg = decodePng(fsSync.readFileSync(FIX_L))
       const rL = findExecuteKeycap(lImg.rgba, lImg.width, lImg.height)
       ok('真实处决键帽（黑底白 L）→ 检测到', rL.hit === true, JSON.stringify(rL))

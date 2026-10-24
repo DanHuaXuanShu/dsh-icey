@@ -1,7 +1,7 @@
 // probe/test-keycap.mjs —— 用真样本帧验证 L 键帽检测器
 import { readFileSync } from 'node:fs'
 import { decodePng } from '../lib/png-decode.mjs'
-import { findExecuteKeycap } from '../lib/execute-keycap.mjs'
+import { findExecuteKeycap } from '../lib/ui/execute-keycap.mjs'
 
 const probe = (p) => {
   const img = decodePng(readFileSync(p))

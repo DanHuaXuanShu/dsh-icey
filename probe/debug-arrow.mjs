@@ -3,7 +3,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { decodePng } from '../lib/png-decode.mjs'
-import { ARROW_TEMPLATE } from '../lib/arrow-template.mjs'
+import { ARROW_TEMPLATE } from '../lib/ui/arrow-template.mjs'
 
 const img = decodePng(readFileSync(process.argv[2] || 'shots/arrow-now.png'))
 const { width: W, height: H, rgba } = img
