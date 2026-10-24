@@ -260,6 +260,55 @@ console.log('\n[2e] 隐藏房间指纹')
   ok('指纹字段始终是数字，不缺字段', typeof roomEnv.lowSatRatio === 'number' && typeof roomEnv.cyanRatio === 'number', '')
 }
 
+/* ---------- 2f. 游戏无响应检测 ---------- */
+console.log('\n[2f] 游戏无响应检测')
+{
+  // 来龙去脉：2026-10-24 连玩时游戏卡死，Enter×4 / Esc / Q 全被吞，
+  // 五次操作截图 SHA 完全一致，而插件还在报「在前台、可以操作」。
+  // 判据：画面一个像素都不变 + 这期间我们按过键 ⇒ 不是卡住，是游戏死了。
+  const { frameHash, createFreezeDetector, FREEZE_FRAMES } = await import('./lib/ui/frame-print.mjs')
+  const W = 64, H = 48
+  const mkFrame = (seed = 0) => {
+    const b = Buffer.alloc(W * H * 4)
+    for (let i = 0; i < b.length; i++) b[i] = (i * 7 + seed) & 0xff
+    return b
+  }
+  const a = mkFrame(0)
+  const aCopy = mkFrame(0)
+  const b = mkFrame(1)
+
+  ok('同一帧两次哈希相等', frameHash(a, W, H) === frameHash(aCopy, W, H), '')
+  ok('换一帧哈希就变', frameHash(a, W, H) !== frameHash(b, W, H), '')
+  ok('尺寸不同则哈希不同', frameHash(a, W, H) !== frameHash(a, W, H + 1), '')
+
+  // 场景 1：画面完全静止 + 期间一直按键 → 判死
+  {
+    const fd = createFreezeDetector()
+    for (let i = 0; i < FREEZE_FRAMES; i++) fd.feed(a, W, H, { acted: true })
+    ok('静态画面 + 一直在按键 → 判定游戏无响应', fd.frozen === true, `streak=${fd.streak}`)
+  }
+  // 场景 2：画面静止但没按键（我们自己按 Esc 暂停就是这样）→ 不误判
+  {
+    const fd = createFreezeDetector()
+    for (let i = 0; i < FREEZE_FRAMES * 2; i++) fd.feed(a, W, H, { acted: false })
+    ok('静态画面但没按键（正常暂停）→ 不误判', fd.frozen === false, `streak=${fd.streak}`)
+  }
+  // 场景 3：画面一直在动 → 不误判
+  {
+    const fd = createFreezeDetector()
+    for (let i = 0; i < FREEZE_FRAMES * 2; i++) fd.feed(mkFrame(i), W, H, { acted: true })
+    ok('画面一直在变 → 不误判', fd.frozen === false, `streak=${fd.streak}`)
+  }
+  // 场景 4：中途动一下，计数从头算（新画面自己就算「连续 1 帧」）
+  {
+    const fd = createFreezeDetector()
+    for (let i = 0; i < FREEZE_FRAMES - 1; i++) fd.feed(a, W, H, { acted: true })
+    fd.feed(b, W, H, { acted: true })
+    ok('画面一变就把计数重置为 1', fd.streak === 1, `streak=${fd.streak}`)
+  }
+  ok('冻结阈值是个合理的秒数（1 帧≈0.7s）', FREEZE_FRAMES >= 4 && FREEZE_FRAMES <= 12, String(FREEZE_FRAMES))
+}
+
 /* ---------- 3. 控制映射 ---------- */
 console.log('\n[3] 控制映射')
 {

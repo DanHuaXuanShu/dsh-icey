@@ -19,7 +19,11 @@ const W = 96, H = 64
  * 同时**涂一块明亮的 HUD**（左上角），否则策略会判定"还没进游戏"而只按确认键 ——
  * 那测的就不是推进逻辑了。
  */
-function makeFrame(seed) {
+/**
+ * @param {number} seed 整帧偏移：seed 变 ⇒ 画面大动（motion 高）
+ * @param {number} [jitter] 只在正中改一个像素：画面「几乎不动」但**指纹会变**
+ */
+function makeFrame(seed, jitter = 0) {
   const buf = Buffer.alloc(W * H * 4, 40)
   for (let i = 0; i < buf.length; i += 4) {
     const px = i / 4
@@ -43,6 +47,13 @@ function makeFrame(seed) {
       const i = (y * W + x) * 4
       buf[i] = 230; buf[i + 1] = 250; buf[i + 2] = 255   // 亮青，跟血条一个调
     }
+  }
+  // jitter：只改一个像素 —— 指纹变，motion 几乎不变。
+  // ⚠️ 必须改 frameHash **真正采样到的位置**。frameHash 按 i += 997 采样，
+  //    所以改「正中那个像素」大概率落在采样点之间，指纹根本不会变（踩过这个坑）。
+  //    i=0 一定在采样点上。
+  if (jitter) {
+    buf[0] = (buf[0] + jitter) % 256
   }
   return buf
 }
@@ -69,8 +80,13 @@ function makeBackend({ frozen = false, found = true } = {}) {
     async focus() { return { ok: true, isTarget: true, requested: true } },
     async capture() {
       tick++
-      // frozen=true 时每帧完全一样 ⇒ motion≈0
-      return { ok: true, width: W, height: H, ms: 1, data: makeFrame(frozen ? 1 : tick) }
+      // frozen=true ⇒ 画面「卡住」：主体不动（motion≈0），但每帧正中一个像素在变。
+      // 不能真的整帧完全一样 —— 那是「游戏无响应」，新的冻结检测会立刻终止循环，
+      // 就测不到脱困逻辑了。真·完全静止的场景在 [5] 段单独测。
+      return {
+        ok: true, width: W, height: H, ms: 1,
+        data: makeFrame(frozen ? 1 : tick, frozen ? 1 + (tick % 2) : 0),
+      }
     },
     async keydown(k) { held.add(k); keys.push(['down', k]); return { ok: true } },
     async keyup(k) { held.delete(k); keys.push(['up', k]); return { ok: true } },
