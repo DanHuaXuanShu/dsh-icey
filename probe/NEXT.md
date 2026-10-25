@@ -83,21 +83,32 @@ const fightingNow = activeRatio >= FIGHT_ACTIVE_RATIO
 
 ## C. 知识层
 
-### C1. 写 skill
+### C1. ✅ 已完成 —— 结论：不要为这个写 skill provider
 
-内容只写"插件用法 + 已知死路"，不写攻略（攻略网上有）。
+2026-10-25 实测：
 
-已知死路（今晚撞出来的）：
-- 铁栅栏门打不开，跳也没用
-- 强化台旁边别按空格（开强化界面）、别按 J（界面里 J 是花钱升级）
-- 一处卡住别硬撞，先退一步看有没有高处入口
+1. 按 `dsh-video-pipeline` 的样子在插件根目录建了 `skills/icey-play/SKILL.md`（frontmatter 齐全）。
+2. `skill({name:'icey-play'})` → `skill "icey-play" is unknown or no longer available`。
+3. 查 host Service 目录（`cordis_inspect_query` → `Service.listService`）：**没有 skills 服务**。
+4. 所以 DSH **不会自动扫描插件包里的 `skills/` 目录**。要让模型看见，得自己写 provider
+   （`dsh-video-pipeline` 就带 `lib/provider.js` + `lib/frontmatter.js`）。
 
-**注意触发**：skill 在工具列表里只露名字和一句描述，模型判断对上了才读。
-描述写不准就永远不被打开。而且只对"模型做决定"的路径（`icey_act`）有用 ——
-`icey_auto` / `icey_play` 是插件自己跑，**skill 一点用都没有**。
+**改走的路**：`icey_playbook` 本来就是现成的规则卡入口，模型在工具列表里直接能看到。
+把内容并进 `lib/playbook.mjs` 立刻可用，零 provider 工程。已做（commit `a01d953`）：
 
-### C2. 明确 skill 装在哪、怎么被读到
-写完要验一次：新建会话，看它是否真的会在合适的时机加载。
+- `rules` 补两条：强化台是设施不是怪；暂停菜单 Enter 可能要按两次
+- 新增 `combatDetection` 一节：旧 hudKick 判据为什么废、现在只认什么、要确认就 `icey_look`
+- `digest` 补两条警告（每步都会看到的那份）
+
+`skills/` 目录已删。
+
+### C2. 什么时候才值得写 provider
+
+当要发的 skill **多到 `icey_playbook` 装不下**，或者需要模型在**不玩游戏的时候**也看见它时。
+单独一条规则卡不值得为它接一套 provider。
+
+**另注**：`icey_playbook` 只对「模型做决定」的路径有用（`icey_act`）。
+`icey_auto` / `icey_play` 是插件自己跑，**规则卡对它们一点用都没有**。
 
 ---
 
