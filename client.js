@@ -229,7 +229,8 @@ window.__ModuleLoader__.load({
             if (cancelled || cur.running) return
             const res = await jpost('/attach', {})
             if (cancelled || !res.attached) return
-            setLive(true)
+            // 不再自动开画面（2026-10-25）：游戏平时就在前台，面板再推一路 10fps 的流是纯冗余。
+            // 要看画面点「开画面」就行。
             await refresh()
           } catch { /* 没接上就算了，按钮还在 */ }
         })()
@@ -254,7 +255,6 @@ window.__ModuleLoader__.load({
           let res = await jpost('/attach', {})
           if (res.attached) {
             setMsg('接上了')
-            setLive(true)
           } else {
             setMsg('游戏没开着，正在启动…（Unity 加载要 10–30 秒）')
             res = await jpost('/launch', { mode: 'direct', waitMs: 60000 })
@@ -262,7 +262,6 @@ window.__ModuleLoader__.load({
               setMsg(res.error || '启动失败')
             } else {
               setMsg(`接上了（${res.rect ? `${res.rect.width}x${res.rect.height}` : '窗口已就绪'}）`)
-              setLive(true)
             }
           }
           await refresh()
@@ -275,7 +274,7 @@ window.__ModuleLoader__.load({
         setBusy('attach'); setMsg('正在找游戏窗口…')
         try {
           const res = await jpost('/attach', {})
-          if (res.attached) { setMsg('接上了'); setLive(true) }
+          if (res.attached) { setMsg('接上了') }
           else setMsg(res.reason || '没找到游戏窗口 —— 游戏是不是没开？用左边的「接上游戏」可以直接启动它。')
           await refresh()
         } catch (e) { setMsg(`接不上：${e.message}`) } finally { setBusy('') }
@@ -327,7 +326,9 @@ window.__ModuleLoader__.load({
                 // 重要的反馈要显示在视线里，别只丢到最底下的脚注
                 msg ? h('div', { 'data-icey-err': '', style: { maxWidth: '520px' } }, msg) : null)
               : h(React.Fragment, null,
-                h('div', { style: { fontSize: '14px', color: 'var(--dsw-alias-label-primary)' } }, live ? '正在取画面…' : '画面关着'),
+                h('div', { style: { fontSize: '14px', color: 'var(--dsw-alias-label-primary)' } }, live ? '正在取画面…' : '画面默认关着'),
+                !live ? h('div', { style: { maxWidth: '520px', opacity: 0.75 } },
+                  '游戏开着的时候直接看游戏窗口更清楚。这个面板留作看状态和兜底，画面要看过点上面的「开画面」。') : null,
                 !canAct && reason ? h('div', { 'data-icey-err': '', style: { maxWidth: '520px' } }, reason) : null,
                 h('button', { 'data-icey-btn': '', 'data-primary': '1', onClick: () => setLive(true) }, '开画面')))
             : null),
@@ -484,16 +485,24 @@ window.__ModuleLoader__.load({
           return
         }
 
-        // 主面板：key 必须跟 sidebar.panellist 的 id 对上，否则点了打不开
-        guarded('主面板', () => {
-          slots.inject('main', () => slots.register({ name: 'main', key: PANEL_ID }, Panel))
-        })
-        guarded('侧栏入口', () => {
-          slots.inject('sidebar.panellist', () => slots.register(
-            { name: 'sidebar.panellist', id: PANEL_ID, order: 40, label: () => '艾希' },
-            IceyIcon,
-          ))
-        })
+        // ── 主面板和侧栏入口已移除（2026-10-25）────────────────────────────
+        //
+        // 为什么删：面板的每一项对 AI 驱动场景都是冗余的 ——
+        //   接上游戏 / 只接窗口  → icey_start
+        //   松开按键            → icey_stop
+        //   自主连玩进度        → icey_play 的返回值
+        //   报错                → 工具直接返回
+        //   实时画面            → 游戏就在前台，不需要看缩水版
+        // 而它唯一的"独有价值"（把状态摊在侧栏）也用不上：游戏占着前台，
+        // 要看面板就得切窗口，切过去游戏就看不见了 —— 只能二选一。
+        //
+        // 现在信息走对话：跑完一轮我直接说「fight-start×7、处决 3 次、卡在 move×83」，
+        // 比仪表详细，还能追问。插件回归纯工具。
+        //
+        // 保留：settings.section（只读展示键位映射，偶尔查键位还有用）
+        //      Panel / IceyIcon 组件本身留着没删，想恢复面板把下面两段 guarded 放回来即可。
+        void Panel
+        void IceyIcon
         // 设置页（只是只读展示；真正改配置在「设置 → 插件 → 艾希」的 bundle 页）
         guarded('设置页', () => {
           slots.inject('settings.section', () => slots.register(
