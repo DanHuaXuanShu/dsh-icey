@@ -561,6 +561,13 @@ console.log('\n[6] 自主连玩策略')
   const uiMoves = Array.from({ length: 6 }, (_, i) => pUi.decide({ motion: 0.01, hudKick: FIGHT_HUDKICK + 0.05, hudBright: 0.08 }, { now: i * 100 }).action)
   ok('HUD 大跳但画面静止 → 不判战斗（不空挥刀）', !uiMoves.some((a) => ['attack', 'heavy', 'combo', 'storm', 'shade'].includes(a)), uiMoves.join(','))
 
+  // ⑥c 原地放技能（motion 10–13%）→ 不判战斗。2026-10-25 用用户录屏 300 帧复核出来的：
+  //     帧 108-111 是艾希在原地放技能、场上没有敌人，motion 只有 10-13%；
+  //     真战斗（帧 294-297）是 25-46%，中间是空的。所以 FIGHT_MOTION 从 8% 抬到了 15%。
+  const pSkill = createPolicy('advance')
+  const skillMoves = Array.from({ length: 8 }, (_, i) => pSkill.decide({ motion: 0.12, hudKick: 0, hudBright: 0.05, progress: 0.5 }, { now: i * 700 }).action)
+  ok('原地放技能（motion 12%）→ 不判战斗', !skillMoves.some((a) => ['attack', 'heavy', 'combo', 'storm', 'shade'].includes(a)), skillMoves.join(','))
+
   // ⑦ 策略：正常推进 → 走右
   const p3 = createPolicy('advance')
   const d3 = p3.decide({ motion: 0.01, hudKick: 0 }, { now: 0 })
