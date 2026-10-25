@@ -434,6 +434,19 @@ console.log('\n[3] 控制映射')
 
   // 元游戏对话框的两个选项键（2026-10-25）。旁白会突然问「您是否是丹华玄书」，
   // 画面上「否」和「E.」就是这两个键 —— 没有它们插件只能按 Enter 对着故障画面打转。
+  // 两个特殊技（湍流 键8 / 流场 键9）权重必须压低（2026-10-25 用户要求）。
+  // 它们消耗生命换免疫，性价比不如连段和重击。原来各 1/25 ≈ 4%，另有「每 37/41 循环必放一次」
+  // 的定时触发叠加，实际出场频率更高。
+  {
+    const { ACTION_WEIGHTS } = await import('./lib/autoplay.mjs')
+    const fw = ACTION_WEIGHTS.fight
+    ok(
+      '两个特殊技权重压到 1 以下（低于普攻和重击）',
+      fw.storm < 1 && fw.shade < 1 && fw.storm < fw.attack && fw.shade < fw.attack,
+      JSON.stringify(fw),
+    )
+  }
+
   const dYes = planAction({ action: 'yes' }, { keyMap: DEFAULT_KEYMAP })
   const dNo = planAction({ action: 'no' }, { keyMap: DEFAULT_KEYMAP })
   eq('对话框选「是」→ 点 q', dYes.steps.map((s) => s.key), ['q'])
