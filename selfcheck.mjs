@@ -597,6 +597,17 @@ console.log('\n[6] 自主连玩策略')
   const noRedMoves = Array.from({ length: 3 }, (_, i) => pNoRed.decide({ motion: 0.01, hudKick: 0, hudBright: 0.06, darkRatio: 0.11, listBands: 10, menuRows: 0, progress: 0.5 }, { now: i * 700 }).action)
   ok('没有红字（战斗/明亮场景）→ 不按 Esc', !noRedMoves.includes('pause'), noRedMoves.join(','))
 
+  // ⑥h 掉血 = 真在挨打 → 判战斗。
+  //     2026-10-25 实机：150 秒里 damage×23，可 fight-start 只认了 1 次 —— 连击会因超时/破盾断开，
+  //     光靠它漏得厉害。用户说明：一段时间没打到敌人就断，护盾破了之后受击也断。
+  const pDmg = createPolicy('advance')
+  pDmg.decide({ motion: 0.01, hudKick: 0, hudBright: 0.08, combo: 0, menuRows: 0, progress: 0.5 }, { now: 0 })
+  const dmgMoves = []
+  for (let i = 1; i <= 4; i++) {
+    dmgMoves.push(pDmg.decide({ motion: 0.01, hudKick: 0, hudBright: 0.07, combo: 0, menuRows: 0, progress: 0.5 }, { now: i * 300 }).action)
+  }
+  ok('掉血（血条变短）→ 判战斗', dmgMoves.some((a) => ['attack', 'heavy', 'combo', 'storm', 'shade', 'chase'].includes(a)), dmgMoves.join(','))
+
   // ⑦ 策略：正常推进 → 走右
   const p3 = createPolicy('advance')
   const d3 = p3.decide({ motion: 0.01, hudKick: 0 }, { now: 0 })
