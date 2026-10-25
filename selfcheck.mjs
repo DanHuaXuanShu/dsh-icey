@@ -551,7 +551,7 @@ console.log('\n[6] 自主连玩策略')
   // ⑥ 策略：HUD 在跳 → 打架，出攻击/重击
   const p2 = createPolicy('advance')
   const fightMoves = []
-  for (let i = 0; i < 6; i++) fightMoves.push(p2.decide({ motion: 0.3, hudKick: FIGHT_HUDKICK + 0.05 }, { now: i * 100 }))
+  for (let i = 0; i < 6; i++) fightMoves.push(p2.decide({ motion: 0.3, combo: 1, hudKick: FIGHT_HUDKICK + 0.05 }, { now: i * 100 }))
   ok('在打架时只出战斗动作（含闪避/位移）', fightMoves.every((d) => ['attack', 'heavy', 'dash', 'move', 'jump', 'chase', 'execute', 'storm', 'shade', 'combo'].includes(d.action)), fightMoves.map((d) => d.action).join(','))
   ok('在打架时确实会攻击（含连段）', fightMoves.some((d) => d.action === 'attack' || d.action === 'combo' || d.action === 'heavy'), fightMoves.map((d) => d.action).join(','))
 
@@ -685,7 +685,7 @@ console.log('\n[6] 自主连玩策略')
   const pChase = createPolicy('advance')
   const seqFight = []
   for (let i = 0; i < 30; i++) {
-    seqFight.push(pChase.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5 }, { now: i * 300 }))
+    seqFight.push(pChase.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5 }, { now: i * 300 }))
   }
   ok('打架时会用追击（chase）', seqFight.some((d) => d.action === 'chase'), [...new Set(seqFight.map((d) => d.action))].join(','))
   ok('打架时也会闪现（dash）', seqFight.some((d) => d.action === 'dash'), [...new Set(seqFight.map((d) => d.action))].join(','))
@@ -708,11 +708,11 @@ console.log('\n[6] 自主连玩策略')
   // ㉘ 实战数据学到的预警闪避：亮闪≥VFX_DANGER 就先闪（24 分钟数据：大伤害前 6.61% vs 全局 4.09%）
   ok('VFX_DANGER 落在实测区间（4.09% 与 6.61% 之间）', VFX_DANGER > 0.041 && VFX_DANGER < 0.066, String(VFX_DANGER))
   const pVfx = createPolicy('advance')
-  const dVfx = pVfx.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5, vfx: 0.07 }, { now: 0 })
+  const dVfx = pVfx.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5, vfx: 0.07 }, { now: 0 })
   ok('亮闪升高时先闪避而不是硬打', dVfx.action === 'dash', JSON.stringify(dVfx))
   ok('闪避理由写明了数据依据', /亮闪/.test(dVfx.why || ''), dVfx.why)
   const pNoVfx = createPolicy('advance')
-  const dNoVfx = pNoVfx.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5, vfx: 0.03 }, { now: 0 })
+  const dNoVfx = pNoVfx.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5, vfx: 0.03 }, { now: 0 })
   ok('亮闪正常时不乱闪', dNoVfx.action !== 'dash' || !/亮闪/.test(dNoVfx.why || ''), JSON.stringify(dNoVfx))
 
   // ㉓ 行动权重：确定性 + 每个 preset 的权重表都存在
@@ -815,7 +815,7 @@ console.log('\n[6] 自主连玩策略')
     const pFight = createPolicy('advance')
     let sawFight = 0
     for (let i = 0; i < 10; i++) {
-      pFight.decide({ motion: 0.246, hudKick: 0.002, hudBright: 0.04, progress: 0.05 }, { now: i * 300 })
+      pFight.decide({ motion: 0.246, combo: 1, hudKick: 0.002, hudBright: 0.04, progress: 0.05 }, { now: i * 300 })
       if (pFight.fighting) sawFight++
     }
     ok('战斗中能识别出在打架', sawFight >= 8, String(sawFight))
@@ -849,7 +849,7 @@ console.log('\n[6] 自主连玩策略')
     const pC = createPolicy('advance')
     const seen = {}
     for (let i = 0; i < 600; i++) {
-      const d = pC.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5 }, { now: i * 300 })
+      const d = pC.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5 }, { now: i * 300 })
       if (d.action === 'combo' && d.keys) seen[d.keys] = (seen[d.keys] || 0) + 1
     }
     const top = (seen['jjiii'] || 0) + (seen['jjji'] || 0)
@@ -858,10 +858,10 @@ console.log('\n[6] 自主连玩策略')
 
   // ㊲ 处决优先级（用户要求）：看到黄圈+头顶L 立刻按 L，处决完长按 J 吸超载
   const pExec = createPolicy('advance')
-  const dExec = pExec.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5, executePrompt: true, executeX: 0.6 }, { now: 0 })
+  const dExec = pExec.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5, executePrompt: true, executeX: 0.6 }, { now: 0 })
   ok('看到处决提示 → 立刻按 L', dExec.action === 'execute', JSON.stringify(dExec))
   ok('处决理由写明了收益', /回血|回盾|结晶/.test(dExec.why || ''), dExec.why)
-  const dOver = pExec.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5, executePrompt: false }, { now: 1500 })
+  const dOver = pExec.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5, executePrompt: false }, { now: 1500 })
   ok('处决之后 → 长按 J 吸收超载', dOver.action === 'overload', JSON.stringify(dOver))
 
   // ㊳ 权重：连段/重击优先级提高（用户要求）
@@ -994,7 +994,7 @@ console.log('\n[6] 自主连玩策略')
   const pComb = createPolicy('advance')
   let sawCombo = null
   for (let i = 0; i < 40; i++) {
-    const d = pComb.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5 }, { now: i * 300 })
+    const d = pComb.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5 }, { now: i * 300 })
     if (d.action === 'combo') { sawCombo = d; break }
   }
   ok('打架时会打出连段', !!sawCombo, sawCombo ? JSON.stringify(sawCombo) : '40 次决策里没出现 combo')
