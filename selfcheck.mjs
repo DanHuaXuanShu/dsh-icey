@@ -568,6 +568,19 @@ console.log('\n[6] 自主连玩策略')
   const skillMoves = Array.from({ length: 8 }, (_, i) => pSkill.decide({ motion: 0.12, hudKick: 0, hudBright: 0.05, progress: 0.5 }, { now: i * 700 }).action)
   ok('原地放技能（motion 12%）→ 不判战斗', !skillMoves.some((a) => ['attack', 'heavy', 'combo', 'storm', 'shade'].includes(a)), skillMoves.join(','))
 
+  // ⑥d 黑屏过场（压暗 95%，但 HUD 一起没了）→ 不是菜单，不许按 Esc。
+  //     2026-10-25 实机抓到这条循环：黑屏被判成菜单 → 按 Esc 想退出 →
+  //     游戏里 Esc 就是「打开」暂停菜单 → 于是真的被按出来了，然后卡在菜单里出不去。
+  //     用户早就记过一条「菜单会自己打开」，真相是插件自己按的。
+  const pDark = createPolicy('advance')
+  const darkMoves = Array.from({ length: 6 }, (_, i) => pDark.decide({ motion: 0.01, hudKick: 0, hudBright: 0, darkRatio: 0.95, listBands: 2, progress: 0.5 }, { now: i * 700 }).action)
+  ok('黑屏过场（压暗但没 HUD）→ 不按 Esc', !darkMoves.includes('pause'), darkMoves.join(','))
+
+  // ⑥e 真菜单（压暗但血条还亮着）→ 仍然按 Esc 退出。这条别被上面修坏了
+  const pMenuDark = createPolicy('advance')
+  const menuDarkMoves = Array.from({ length: 4 }, (_, i) => pMenuDark.decide({ motion: 0.01, hudKick: 0, hudBright: 0.05, darkRatio: 0.95, listBands: 2, progress: 0.5 }, { now: i * 700 }).action)
+  ok('真菜单（压暗但血条还在）→ 按 Esc 退出', menuDarkMoves.includes('pause'), menuDarkMoves.join(','))
+
   // ⑦ 策略：正常推进 → 走右
   const p3 = createPolicy('advance')
   const d3 = p3.decide({ motion: 0.01, hudKick: 0 }, { now: 0 })
