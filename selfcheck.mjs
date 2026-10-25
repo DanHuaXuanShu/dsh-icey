@@ -555,6 +555,12 @@ console.log('\n[6] 自主连玩策略')
   ok('在打架时只出战斗动作（含闪避/位移）', fightMoves.every((d) => ['attack', 'heavy', 'dash', 'move', 'jump', 'chase', 'execute', 'storm', 'shade', 'combo'].includes(d.action)), fightMoves.map((d) => d.action).join(','))
   ok('在打架时确实会攻击（含连段）', fightMoves.some((d) => d.action === 'attack' || d.action === 'combo' || d.action === 'heavy'), fightMoves.map((d) => d.action).join(','))
 
+  // ⑥b 只有 HUD 大跳、画面不动 → 这是 UI 切换（菜单开合/场景切换），不是战斗。
+  //     2026-10-25 之前 hudKick 参与战斗判据，实测「暂停菜单一关」就会被当成「进入战斗」。
+  const pUi = createPolicy('advance')
+  const uiMoves = Array.from({ length: 6 }, (_, i) => pUi.decide({ motion: 0.01, hudKick: FIGHT_HUDKICK + 0.05, hudBright: 0.08 }, { now: i * 100 }).action)
+  ok('HUD 大跳但画面静止 → 不判战斗（不空挥刀）', !uiMoves.some((a) => ['attack', 'heavy', 'combo', 'storm', 'shade'].includes(a)), uiMoves.join(','))
+
   // ⑦ 策略：正常推进 → 走右
   const p3 = createPolicy('advance')
   const d3 = p3.decide({ motion: 0.01, hudKick: 0 }, { now: 0 })
