@@ -581,6 +581,12 @@ console.log('\n[6] 自主连玩策略')
   const menuDarkMoves = Array.from({ length: 4 }, (_, i) => pMenuDark.decide({ motion: 0.01, hudKick: 0, hudBright: 0, darkRatio: 0.95, listBands: 10, progress: 0.5 }, { now: i * 700 }).action)
   ok('真菜单（压暗但血条还在）→ 按 Esc 退出', menuDarkMoves.includes('pause'), menuDarkMoves.join(','))
 
+  // ⑥f 明亮场景里物体边缘也会被数成「文字条带」——但压暗只有 11%，不是菜单。
+  //     2026-10-25 实机撞到：listBands=9~10 / darkRatio=0.11，被当成菜单按了 Esc。
+  const pBright = createPolicy('advance')
+  const brightMoves = Array.from({ length: 4 }, (_, i) => pBright.decide({ motion: 0.01, hudKick: 0, hudBright: 0.06, darkRatio: 0.11, listBands: 10, progress: 0.5 }, { now: i * 700 }).action)
+  ok('明亮场景（条带多但不暗）→ 不按 Esc', !brightMoves.includes('pause'), brightMoves.join(','))
+
   // ⑦ 策略：正常推进 → 走右
   const p3 = createPolicy('advance')
   const d3 = p3.decide({ motion: 0.01, hudKick: 0 }, { now: 0 })
