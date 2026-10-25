@@ -578,7 +578,7 @@ console.log('\n[6] 自主连玩策略')
 
   // ⑥e 真菜单（压暗但血条还亮着）→ 仍然按 Esc 退出。这条别被上面修坏了
   const pMenuDark = createPolicy('advance')
-  const menuDarkMoves = Array.from({ length: 4 }, (_, i) => pMenuDark.decide({ motion: 0.01, hudKick: 0, hudBright: 0.05, darkRatio: 0.95, listBands: 2, progress: 0.5 }, { now: i * 700 }).action)
+  const menuDarkMoves = Array.from({ length: 4 }, (_, i) => pMenuDark.decide({ motion: 0.01, hudKick: 0, hudBright: 0, darkRatio: 0.95, listBands: 10, progress: 0.5 }, { now: i * 700 }).action)
   ok('真菜单（压暗但血条还在）→ 按 Esc 退出', menuDarkMoves.includes('pause'), menuDarkMoves.join(','))
 
   // ⑦ 策略：正常推进 → 走右
