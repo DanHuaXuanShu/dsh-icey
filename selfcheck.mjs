@@ -411,7 +411,8 @@ console.log('\n[3] 控制映射')
     DEFAULT_KEYMAP.moveUp === 'w' && DEFAULT_KEYMAP.moveDown === 's' &&
     DEFAULT_KEYMAP.attack === 'j' && DEFAULT_KEYMAP.jump === ' ' &&
     DEFAULT_KEYMAP.heavy === 'i' && DEFAULT_KEYMAP.execute === 'l' &&
-    DEFAULT_KEYMAP.dash === 'o' && DEFAULT_KEYMAP.chase === 'u',
+    DEFAULT_KEYMAP.dash === 'o' && DEFAULT_KEYMAP.chase === 'u' &&
+    DEFAULT_KEYMAP.yes === 'q' && DEFAULT_KEYMAP.no === 'e',
     JSON.stringify(DEFAULT_KEYMAP))
   ok('动作清单齐全', ['move', 'attack', 'heavy', 'execute', 'jump', 'dash', 'menu', 'pause', 'interact'].every((a) => a in ACTION_SPECS), Object.keys(ACTION_SPECS).join(','))
   const move = planAction({ action: 'move', dir: 'right', ms: 800 })
@@ -430,6 +431,14 @@ console.log('\n[3] 控制映射')
   // 垂直方向：够空中的入口用。PC 版冲刺是四方向的（FlashUp），以前从没调用过 up。
   const dashUp = planAction({ action: 'dash', dir: 'up' })
   eq('dash up → 按住 w 再点 o', dashUp.steps.map((s) => s.key), [DEFAULT_KEYMAP.moveUp, DEFAULT_KEYMAP.dash])
+
+  // 元游戏对话框的两个选项键（2026-10-25）。旁白会突然问「您是否是丹华玄书」，
+  // 画面上「否」和「E.」就是这两个键 —— 没有它们插件只能按 Enter 对着故障画面打转。
+  const dYes = planAction({ action: 'yes' }, { keyMap: DEFAULT_KEYMAP })
+  const dNo = planAction({ action: 'no' }, { keyMap: DEFAULT_KEYMAP })
+  eq('对话框选「是」→ 点 q', dYes.steps.map((s) => s.key), ['q'])
+  eq('对话框选「否」→ 点 e', dNo.steps.map((s) => s.key), ['e'])
+  ok('对话框两个字都写清了是选哪个', /选「是」/.test(dYes.desc || '') && /选「否」/.test(dNo.desc || ''), dYes.desc + ' / ' + dNo.desc)
   const pause = planAction({ action: 'pause' })
   eq('pause → Esc', pause.steps.map((s) => s.key), ['Escape'])
   const menu = planAction({ action: 'menu', item: 'resume' })
