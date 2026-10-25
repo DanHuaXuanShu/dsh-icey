@@ -578,7 +578,7 @@ console.log('\n[6] 自主连玩策略')
 
   // ⑥e 真菜单（压暗但血条还亮着）→ 仍然按 Esc 退出。这条别被上面修坏了
   const pMenuDark = createPolicy('advance')
-  const menuDarkMoves = Array.from({ length: 4 }, (_, i) => pMenuDark.decide({ motion: 0.01, hudKick: 0, hudBright: 0, darkRatio: 0.95, listBands: 10, progress: 0.5 }, { now: i * 700 }).action)
+  const menuDarkMoves = Array.from({ length: 4 }, (_, i) => pMenuDark.decide({ motion: 0.01, hudKick: 0, hudBright: 0, darkRatio: 0.95, listBands: 10, menuRows: 1, progress: 0.5 }, { now: i * 700 }).action)
   ok('真菜单（压暗但血条还在）→ 按 Esc 退出', menuDarkMoves.includes('pause'), menuDarkMoves.join(','))
 
   // ⑥f 明亮场景里物体边缘也会被数成「文字条带」——但压暗只有 11%，不是菜单。
@@ -586,6 +586,16 @@ console.log('\n[6] 自主连玩策略')
   const pBright = createPolicy('advance')
   const brightMoves = Array.from({ length: 4 }, (_, i) => pBright.decide({ motion: 0.01, hudKick: 0, hudBright: 0.06, darkRatio: 0.11, listBands: 10, progress: 0.5 }, { now: i * 700 }).action)
   ok('明亮场景（条带多但不暗）→ 不按 Esc', !brightMoves.includes('pause'), brightMoves.join(','))
+
+  // ⑥g 菜单靠「红色文字行」判：菜单里那行固定红字是唯一分得开的证据。
+  //     实测 菜单 1 条 / 普通画面 0 条 / 战斗红特效 0 条。
+  const pRed = createPolicy('advance')
+  const redMoves = Array.from({ length: 3 }, (_, i) => pRed.decide({ motion: 0.01, hudKick: 0, hudBright: 0, darkRatio: 0.92, listBands: 2, menuRows: 1, progress: 0.5 }, { now: i * 700 }).action)
+  ok('菜单红字（1 条红色文字行）→ 按 Esc 退出', redMoves.includes('pause'), redMoves.join(','))
+
+  const pNoRed = createPolicy('advance')
+  const noRedMoves = Array.from({ length: 3 }, (_, i) => pNoRed.decide({ motion: 0.01, hudKick: 0, hudBright: 0.06, darkRatio: 0.11, listBands: 10, menuRows: 0, progress: 0.5 }, { now: i * 700 }).action)
+  ok('没有红字（战斗/明亮场景）→ 不按 Esc', !noRedMoves.includes('pause'), noRedMoves.join(','))
 
   // ⑦ 策略：正常推进 → 走右
   const p3 = createPolicy('advance')
@@ -799,19 +809,19 @@ console.log('\n[6] 自主连玩策略')
 
   // ㊴ 停在菜单里（强化页面）：只按 Esc，绝不按 Enter —— 那里的 Enter 是「升级」，会花钱
   const pMenu = createPolicy('advance')
-  const dMenu = pMenu.decide({ motion: 0.02, hudKick: 0, hudBright: 0.07, progress: 0.02, listBands: 13, darkRatio: 0.83 }, { now: 0 })
+  const dMenu = pMenu.decide({ motion: 0.02, hudKick: 0, hudBright: 0.07, progress: 0.02, listBands: 13, darkRatio: 0.83, menuRows: 1 }, { now: 0 })
   ok('识别为菜单 → 按 Esc 退出', dMenu.action === 'pause', JSON.stringify(dMenu))
   ok('菜单理由写明了依据', /文字|压暗/.test(dMenu.why || ''), dMenu.why)
-  const dMenu2 = pMenu.decide({ motion: 0.02, hudKick: 0, hudBright: 0.07, progress: 0.02, listBands: 13, darkRatio: 0.83 }, { now: 300 })
+  const dMenu2 = pMenu.decide({ motion: 0.02, hudKick: 0, hudBright: 0.07, progress: 0.02, listBands: 13, darkRatio: 0.83, menuRows: 1 }, { now: 300 })
   ok('Esc 有节流（不连按）', dMenu2.action === 'wait', JSON.stringify(dMenu2))
-  const dMenu3 = pMenu.decide({ motion: 0.02, hudKick: 0, hudBright: 0.07, progress: 0.02, listBands: 13, darkRatio: 0.83 }, { now: 5000 })
+  const dMenu3 = pMenu.decide({ motion: 0.02, hudKick: 0, hudBright: 0.07, progress: 0.02, listBands: 13, darkRatio: 0.83, menuRows: 1 }, { now: 5000 })
   ok('隔 5 秒再次 Esc 并累计计数', dMenu3.action === 'pause' && pMenu.menuEscCount >= 2, String(pMenu.menuEscCount))
 
   // 菜单里连续 20 秒决策，一次 Enter 都不能出现
   const pMenu4 = createPolicy('advance')
   let sawMenuEnter = false
   for (let t = 0; t < 20000; t += 500) {
-    const d = pMenu4.decide({ motion: 0.02, hudKick: 0, hudBright: 0.07, progress: 0.02, listBands: 14, darkRatio: 0.9 }, { now: t })
+    const d = pMenu4.decide({ motion: 0.02, hudKick: 0, hudBright: 0.07, progress: 0.02, listBands: 14, darkRatio: 0.9, menuRows: 1 }, { now: t })
     if (d.action === 'interact') sawMenuEnter = true
   }
   ok('菜单里 20 秒内一次 Enter 都没有', !sawMenuEnter, '')
