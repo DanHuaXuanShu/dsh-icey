@@ -1064,6 +1064,28 @@ console.log('\n[6] 自主连玩策略')
       // 处决快通道「真的在跑」的实证（没有它，跑完分不清「没遇到键帽」和「旁路没启动」）
       ok('exec-look 已登记为正式事件 kind', KINDS.includes('exec-look'), KINDS.join(','))
     }
+    // ⑫ 操控分工写进插件（2026-10-26 用户立的规矩：模型要亲手按，不能只托管）
+    //    这一条必须活在**三处**才算数：规则卡、digest、工具描述。
+    //    只写规则卡的话，模型不看规则卡就失效；只写工具描述的话，它读不到为什么。
+    {
+      const { PLAYBOOK, playbookText } = await import('./lib/playbook.mjs')
+      ok('规则卡有「谁的手在键盘上」一节', Array.isArray(PLAYBOOK.hands) && PLAYBOOK.hands.length >= 4,
+        `hands=${PLAYBOOK.hands?.length}`)
+      const h = (PLAYBOOK.hands || []).join('\n')
+      ok('规则卡写清默认是亲手按', /默认[^。]*亲手按/.test(h), '')
+      ok('规则卡把 icey_play 定成例外，并给了三种可用场合',
+        /例外/.test(h) && /托管/.test(h) && /30 ?分钟|清一波小怪|赶路/.test(h), '')
+      ok('规则卡提醒「命令发出去 ≠ 键进了游戏」', /0\.00%/.test(h) || /键真的进/.test(h), '')
+      ok('digest 也写了默认自己按', /自己按/.test(PLAYBOOK.digest) && /sequence|icey_act/.test(PLAYBOOK.digest), '')
+      const txt = playbookText()
+      ok('规则卡渲染出了这一节', /谁的手在键盘上/.test(txt), '')
+      const fsSync = await import('node:fs')
+      const agentSrc = fsSync.readFileSync(new URL('./agent.js', import.meta.url), 'utf8')
+      ok('icey_play 的工具描述里写明「默认不是首选」',
+        /默认不是首选/.test(agentSrc), '')
+      ok('icey_act 的工具描述里写明「这是默认操控方式」',
+        /这是默认操控方式/.test(agentSrc), '')
+    }
     // ⑪ 字幕「行」检测：细笔画白字算，成片亮块不算。
     //    2026-10-26 两轮实机各裁到一张空字幕图（框里只有草和脚）——旧判据只看亮像素占比。
     {
