@@ -985,6 +985,38 @@ console.log('\n[6] 自主连玩策略')
     }
     const exCount = exSeq.filter((d) => d.action === 'execute').length
     ok('处决有冷却：提示挂着也不会每 300ms 按一次 L', exCount <= 2, `execute×${exCount}/8`)
+    // ⑥b 处决快通道的「账只有一处」（2026-10-26 加）
+    //   主循环 0.89 秒一步、L 键帽只亮 0.3~0.5 秒 ⇒ 开了条只抓帧看键帽的旁路。
+    //   旁路如果自己记一套冷却，它和 decide() 就会各按各的 —— 所以冷却/计数必须走 policy。
+    {
+      const pFast = mkPolicy('advance')
+      ok('policy 提供快通道要用的 canExecute / noteExecute',
+        typeof pFast.canExecute === 'function' && typeof pFast.noteExecute === 'function',
+        typeof pFast.canExecute)
+      ok('刚开局就能处决（没有被永久冷却卡死）', pFast.canExecute(100_000) === true, '')
+      const nth = pFast.noteExecute(100_000)
+      ok('noteExecute 记成「第 1 次」', nth === 1, `nth=${nth}`)
+      ok('记过一次之后，冷却期内不能再处决', pFast.canExecute(100_000 + 300) === false, '')
+      ok('冷却过了又能处决', pFast.canExecute(100_000 + 2000) === true, '')
+      // 次数上限要管住快通道（否则旁路会在战斗里刷成连按）
+      let guard = 0
+      let t = 200_000
+      while (pFast.canExecute(t) && guard < 100) { pFast.noteExecute(t); t += 2000; guard++ }
+      ok('次数上限会拦住快通道，不会无限按', guard <= pFast.executeLimit, `按了 ${guard} 次，上限 ${pFast.executeLimit}`)
+      // 设计约束：键帽只亮 0.3~0.5 秒，两帧之间不能隔太久，否则一段里只能看一次
+      const fsSync = await import('node:fs')
+      const src = fsSync.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
+      const poll = Number((src.match(/EXEC_FAST_POLL_MS\s*=\s*(\d+)/) || [])[1])
+      ok('快通道的采样间隔够密（键帽只亮 0.3~0.5 秒）',
+        Number.isFinite(poll) && poll > 0 && poll <= 200, `poll=${poll}`)
+      ok('快通道用比分析帧更小的图抓（省时间）',
+        /EXEC_FAST_WIDTH\s*=\s*(\d+)/.test(src) && Number((src.match(/EXEC_FAST_WIDTH\s*=\s*(\d+)/) || [])[1]) <= 400, '')
+      // 关键设计：快通道必须并行在「等动作」里跑，不能单独占时间 ——
+      // 否则每个战斗步多站 0.3 秒，正好把提速收益吃掉。
+      ok('快通道并进「等动作」里跑，不额外占主循环时间',
+        /#waitIdleLookingForExecute/.test(src), '')
+    }
+
     // ⑦ 低血门槛放宽：她死在 血 38.9% / 盾 0%，而旧判据要求「血<30% 且 盾<20%」两条同时成立。
     const pLow = mkPolicy('advance')
     pLow.decide({ motion: 0.3, combo: 1, hudKick: 0, hudBright: 0.08, progress: 0.5, hp: 0.6, shield: 0.12 }, { now: 0 })
@@ -1029,6 +1061,8 @@ console.log('\n[6] 自主连玩策略')
       // 「看见了敌情却没朝那边走」——只记信号、不改决策。
       // 没有这条事件，「没看见敌人」和「看见了被别的分支挡住」在日志里长得一模一样。
       ok('enemy-ignored 已登记为正式事件 kind', KINDS.includes('enemy-ignored'), KINDS.join(','))
+      // 处决快通道「真的在跑」的实证（没有它，跑完分不清「没遇到键帽」和「旁路没启动」）
+      ok('exec-look 已登记为正式事件 kind', KINDS.includes('exec-look'), KINDS.join(','))
     }
     // ⑪ 字幕「行」检测：细笔画白字算，成片亮块不算。
     //    2026-10-26 两轮实机各裁到一张空字幕图（框里只有草和脚）——旧判据只看亮像素占比。
