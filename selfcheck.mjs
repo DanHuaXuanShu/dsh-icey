@@ -1027,6 +1027,41 @@ console.log('\n[6] 自主连玩策略')
       const { KINDS } = await import('./lib/events.mjs')
       ok('dialog-wait 已登记为正式事件 kind', KINDS.includes('dialog-wait'), KINDS.join(','))
     }
+    // ⑪ 字幕「行」检测：细笔画白字算，成片亮块不算。
+    //    2026-10-26 两轮实机各裁到一张空字幕图（框里只有草和脚）——旧判据只看亮像素占比。
+    {
+      const { findBrightTextRows } = await import('./lib/ui/scan.mjs')
+      const L = await import('./lib/games/icey/layout.mjs')
+      const W = 480, H = 278
+      const mk = (paint) => {
+        const buf = new Uint8Array(W * H * 4)
+        for (let i = 0; i < buf.length; i += 4) { buf[i] = 20; buf[i + 1] = 20; buf[i + 2] = 20; buf[i + 3] = 255 }
+        paint(buf)
+        return buf
+      }
+      const white = (buf, x, y) => {
+        if (x < 0 || x >= W || y < 0 || y >= H) return
+        const i = (y * W + x) * 4
+        buf[i] = 255; buf[i + 1] = 255; buf[i + 2] = 255; buf[i + 3] = 255
+      }
+      // 文字行：SUBTITLE_BOX 里、每 12px 两根白像素（细笔画）
+      const textFrame = mk((buf) => {
+        const y0 = Math.round(0.82 * H)
+        for (let y = y0; y < y0 + 6; y++) {
+          for (let x = 60; x < W - 60; x += 12) { white(buf, x, y); white(buf, x + 1, y) }
+        }
+      })
+      const textRows = findBrightTextRows(textFrame, W, H, L.SUBTITLE_BOX)
+      ok('字幕检测：成行的细笔画白字 → 认得出', textRows.length >= 1, JSON.stringify(textRows))
+      // 成片亮块（亮草/白花/特效）：密度超上限，不该被当成字幕
+      const blockFrame = mk((buf) => {
+        for (let y = Math.round(0.78 * H); y < Math.round(0.92 * H); y++) {
+          for (let x = 40; x < 400; x++) white(buf, x, y)
+        }
+      })
+      const blockRows = findBrightTextRows(blockFrame, W, H, L.SUBTITLE_BOX)
+      ok('字幕检测：成片亮块 → 不算字幕', blockRows.length === 0, JSON.stringify(blockRows))
+    }
   // ⑥ 血盾都快空了就撤、不再出招（2026-10-26 被打死两次之后补的硬规则）
   {
     const pf5 = mkPolicy('advance')

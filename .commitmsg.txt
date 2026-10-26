@@ -1,0 +1,12 @@
+fix: 字幕判据看「成行的白字」，不看亮像素占比
+
+两轮实机各裁到一张空字幕图（框里只有草和脚），根因是旧判据只看
+SUBTITLE_BOX 里的亮像素占比，把地面的亮草、白花、角色的青色特效
+都算成「有人在说话」。
+
+- lib/ui/scan.mjs 新增 findBrightTextRows()：跟菜单红字同源的做法
+  （行 → 带 → 横向游程），颜色谓词换成「亮且近白」，再卡平均笔画宽度，
+  成片色块过不了 maxAvgRunW 这一关。
+- lib/autoplay.mjs analyzeFrame 多返回 subtitleRows，两个 return 都带。
+- lib/game.mjs 字幕裁图和 dialog-wait 都要求 rows >= 1。
+- selfcheck 加两条：细笔画白字认得出、成片亮块不算字幕（332 项）。
