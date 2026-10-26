@@ -912,6 +912,22 @@ console.log('\n[6] 自主连玩策略')
     }
     const faces4 = seq4.filter((d) => d.action === 'face').length
     ok('连击数读不到时不会乱翻面（首跑 26 次抽搐的回归）', faces4 === 0, `face×${faces4}`)
+  // ⑥ 血盾都快空了就撤、不再出招（2026-10-26 被打死两次之后补的硬规则）
+  {
+    const pf5 = mkPolicy('advance')
+    // 先喂一帧正常血量，把基线立起来
+    pf5.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, hp: 0.6, shield: 0.12 }, { now: 0 })
+    const seq5 = []
+    for (let i = 1; i <= 3; i++) {
+      seq5.push(pf5.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, hp: 0.15, shield: 0.01 }, { now: i * 800 }))
+    }
+    const d5 = seq5.find((d) => d.action === 'dash')
+    ok('低血时先闪开、不追招（不是逃跑：场地有屏障）', !!d5, seq5.map((d) => d.action).join(','))
+    ok('后撤方向是背对当前朝向', !!d5 && (d5.dir === 'left' || d5.dir === 'right'), d5?.dir || '')
+    // 低血时那两个「花血换免疫」的强化技必须被压掉，否则等于拿命换几帧无敌
+    ok('低血时不会去放消耗生命的强化技', !seq5.some((d) => d.action === 'storm' || d.action === 'shade'),
+      seq5.map((d) => d.action).join(','))
+  }
   // ⑤ icey_dev 的 stamp 必须能算出「进程启动时刻」并扫到代码文件 —— 这是「改动有没有生效」的唯一判据
   {
     const { stampReport } = await import('./lib/devctl.mjs')
