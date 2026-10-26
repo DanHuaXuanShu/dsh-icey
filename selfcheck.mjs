@@ -699,6 +699,36 @@ console.log('\n[6] 自主连玩策略')
   const noRedMoves = Array.from({ length: 3 }, (_, i) => pNoRed.decide({ motion: 0.01, hudKick: 0, hudBright: 0.06, darkRatio: 0.11, listBands: 10, menuRows: 0, progress: 0.5 }, { now: i * 700 }).action)
   ok('没有红字（战斗/明亮场景）→ 不按 Esc', !noRedMoves.includes('pause'), noRedMoves.join(','))
 
+  // ⑥g2 「红色文字行」必须能跨分析宽度成立，而且不能把块状红特效当成文字。
+  //      2026-10-26 实测的两个真 bug：
+  //        ① 真菜单警告行在 1280 下 11 行高，缩到 480 只剩 3 行，被 minBandHeight=5 整个滤掉
+  //           ⇒ 默认配置(analysisWidth=480)下暂停菜单根本认不出来。
+  //        ② 480 下的红色霓虹窗/伤害火花能过旧判据 ⇒ 593 张战斗帧里 28 帧被判成菜单、按了 22 次 Esc。
+  //      判据分界：文字是细笔画（平均横向游程 ~1.5px），特效是块状（≥3px）。
+  {
+    const { findRedTextRows } = await import('./lib/ui/scan.mjs')
+    const mk = (w, h) => { const a = new Uint8Array(w * h * 4); for (let i = 0; i < a.length; i += 4) { a[i] = 20; a[i + 1] = 20; a[i + 2] = 22; a[i + 3] = 255 } return a }
+    const paint = (a, w, x, y, rgb) => { const i = (y * w + x) * 4; a[i] = rgb[0]; a[i + 1] = rgb[1]; a[i + 2] = rgb[2]; a[i + 3] = 255 }
+
+    // 文字：3 行高、每行一根根 1px 细竖笔画（模拟中文笔画）
+    const w1 = 480, h1 = 280, text = mk(w1, h1)
+    for (let y = 100; y <= 102; y++) for (let x = 70; x < 182; x += 2) paint(text, w1, x, y, [200, 60, 60])
+    const textBands = findRedTextRows(text, w1, h1)
+    ok('细笔画红字（3 行高的警告行）在 480 宽下也认得出', textBands.length === 1, `bands=${textBands.length}`)
+
+    // 特效：同一位置改成几块大色斑（每块 18px 宽、10 行高）
+    const vfx = mk(w1, h1)
+    for (const x0 of [70, 120, 160]) for (let y = 96; y <= 105; y++) for (let x = x0; x < x0 + 18; x++) paint(vfx, w1, x, y, [200, 60, 60])
+    const vfxBands = findRedTextRows(vfx, w1, h1)
+    ok('块状红特效（伤害火花/霓虹）不当成红色文字行', vfxBands.length === 0, `bands=${vfxBands.length}`)
+
+    // 同一张文字帧放到 640 宽也要认得出（门槛按分辨率折算，不是写死 5 行）
+    const w2 = 640, h2 = 373, text2 = mk(w2, h2)
+    for (let y = 132; y <= 136; y++) for (let x = 94; x < 242; x += 3) paint(text2, w2, x, y, [200, 60, 60])
+    const text2Bands = findRedTextRows(text2, w2, h2)
+    ok('同样的红字换到 640 宽也认得出', text2Bands.length === 1, `bands=${text2Bands.length}`)
+  }
+
   // ⑥h 掉血 = 真在挨打 → 判战斗。
   //     2026-10-25 实机：150 秒里 damage×23，可 fight-start 只认了 1 次 —— 连击会因超时/破盾断开，
   //     光靠它漏得厉害。用户说明：一段时间没打到敌人就断，护盾破了之后受击也断。
