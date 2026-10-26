@@ -1026,6 +1026,9 @@ console.log('\n[6] 自主连玩策略')
       ok('digest 里也提醒了旁白与 Q/E', /旁白/.test(PLAYBOOK.digest) && /Q\s*=\s*是/.test(PLAYBOOK.digest), '')
       const { KINDS } = await import('./lib/events.mjs')
       ok('dialog-wait 已登记为正式事件 kind', KINDS.includes('dialog-wait'), KINDS.join(','))
+      // 「看见了敌情却没朝那边走」——只记信号、不改决策。
+      // 没有这条事件，「没看见敌人」和「看见了被别的分支挡住」在日志里长得一模一样。
+      ok('enemy-ignored 已登记为正式事件 kind', KINDS.includes('enemy-ignored'), KINDS.join(','))
     }
     // ⑪ 字幕「行」检测：细笔画白字算，成片亮块不算。
     //    2026-10-26 两轮实机各裁到一张空字幕图（框里只有草和脚）——旧判据只看亮像素占比。
