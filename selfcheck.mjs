@@ -1014,6 +1014,19 @@ console.log('\n[6] 自主连玩策略')
       ok('agent.js 把字幕裁图排在交互提示之前（Meta 旁白优先）',
         iSub > 0 && iPrompt > 0 && iSub < iPrompt, `sub@${iSub} prompt@${iPrompt}`)
     }
+    // ⑩ 读字之后怎么办：规则卡必须有旁白/元叙事那一节，并且写清 Q/E 是什么。
+    //    2026-10-26 加 —— 字幕图已经递上去了，没有这一节模型不知道该听还是该反。
+    {
+      const { PLAYBOOK } = await import('./lib/playbook.mjs')
+      ok('规则卡有「旁白/元叙事」一节', Array.isArray(PLAYBOOK.narration) && PLAYBOOK.narration.length >= 5,
+        `narration=${PLAYBOOK.narration?.length}`)
+      const npb = (PLAYBOOK.narration || []).join('\n')
+      ok('规则卡写清 Q=是 / E=否', /Q\s*=\s*是/.test(npb) && /E\s*=\s*否/.test(npb), '')
+      ok('规则卡给了「默认先照做一次」的判据', /先照做一次/.test(npb), '')
+      ok('digest 里也提醒了旁白与 Q/E', /旁白/.test(PLAYBOOK.digest) && /Q\s*=\s*是/.test(PLAYBOOK.digest), '')
+      const { KINDS } = await import('./lib/events.mjs')
+      ok('dialog-wait 已登记为正式事件 kind', KINDS.includes('dialog-wait'), KINDS.join(','))
+    }
   // ⑥ 血盾都快空了就撤、不再出招（2026-10-26 被打死两次之后补的硬规则）
   {
     const pf5 = mkPolicy('advance')
