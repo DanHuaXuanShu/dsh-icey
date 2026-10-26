@@ -871,6 +871,38 @@ console.log('\n[6] 自主连玩策略')
   ok('playbook 不再宣称 U/chase 会索敌或突进', !pbBad, pbBad ? pbBad.join(',') : '')
   ok('playbook 明确写了 U 不索敌', /不索敌/.test(pbText), '')
 
+  // ㉒ 转身（face）—— 2026-10-26 真机实测：朝向 = 最后一次移动方向，轻点方向键就翻面；U 不转身。
+  {
+    const { planAction: planFace, parseActionSpec: parseFace } = await import('./lib/control.mjs')
+    const f = planFace({ action: 'face', dir: 'left' })
+    ok('face 只按方向键、不点 U', f.steps.length === 1 && f.steps[0].key === 'a',
+      f.steps.map((s) => s.key).join('+'))
+    ok('face 按住时长压得很短（≤150ms，只为翻面不为走路）', f.steps[0].holdMs <= 150, String(f.steps[0].holdMs))
+    const pf = parseFace('face:left:90')
+    ok('sequence 里能写 face:left:90', pf && pf.action === 'face' && pf.dir === 'left' && pf.ms === 90, JSON.stringify(pf))
+  }
+  {
+    const { createPolicy: mkPolicy } = await import('./lib/autoplay.mjs')
+    const fightFrame = (extra = {}) => ({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5, ...extra })
+    // ① 连击数 1.6 秒没涨 → 应该翻面
+    const pf1 = mkPolicy('advance')
+    const seq1 = []
+    for (let i = 0; i < 4; i++) seq1.push(pf1.decide(fightFrame(), { now: i * 800 }))
+    ok('连击数 1.5 秒没涨 → 会翻面（face）', seq1.some((d) => d.action === 'face'),
+      seq1.map((d) => d.action).join(','))
+    // ② 翻面要限流：紧挨着的两帧不能连续翻
+    const pf2 = mkPolicy('advance')
+    const seq2 = []
+    for (let i = 0; i < 12; i++) seq2.push(pf2.decide(fightFrame(), { now: i * 200 }))
+    const faceIdx = seq2.map((d, i) => (d.action === 'face' ? i : -1)).filter((i) => i >= 0)
+    const tooClose = faceIdx.some((i, k) => k > 0 && (i - faceIdx[k - 1]) * 200 < 1200)
+    ok('两次翻面之间守住了冷却（不会原地抽搐）', !tooClose, faceIdx.join(','))
+    // ③ 知道敌人在哪边时直接朝那边转
+    const pf3 = mkPolicy('advance')
+    const d3 = pf3.decide(fightFrame({ enemyDir: 'left' }), { now: 1000 })
+    ok('看到敌人图标在左边就朝左转', d3.action === 'face' && d3.dir === 'left', `${d3.action}/${d3.dir}`)
+  }
+
   // 菜单里的 Esc 由专门的菜单分支负责（见「停在菜单里怎么办」那组测试），
   // 脱困阶梯里不该再有 Esc：本来没菜单却按 Esc，反而会把暂停菜单打开。
   ok('脱困阶梯里不含 Esc', !UNSTUCK_LADDER.includes('escape'), JSON.stringify(UNSTUCK_LADDER))
