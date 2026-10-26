@@ -853,14 +853,23 @@ console.log('\n[6] 自主连玩策略')
     ok('掉头之后推进方向也翻了', p12.dir === 'left', p12.dir)
   }
 
-  // ⑳ 打架时会用「追击（U）」拉近距离 —— 招式表里 Chase 就是干这个的
+  // ⑳ 打架时会用 chase —— 但**它不是索敌**：动作只是「按住 dir 走一下 + 点 U」，
+  //    U 本身 2026-10-26 实测不转向、不索敌。这条断言只保证「打架时会换位+出剑气」，不保证朝向。
   const pChase = createPolicy('advance')
   const seqFight = []
   for (let i = 0; i < 30; i++) {
     seqFight.push(pChase.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5 }, { now: i * 300 }))
   }
-  ok('打架时会用追击（chase）', seqFight.some((d) => d.action === 'chase'), [...new Set(seqFight.map((d) => d.action))].join(','))
+  ok('打架时会用 chase（走一步+点U，非索敌）', seqFight.some((d) => d.action === 'chase'), [...new Set(seqFight.map((d) => d.action))].join(','))
   ok('打架时也会闪现（dash）', seqFight.some((d) => d.action === 'dash'), [...new Set(seqFight.map((d) => d.action))].join(','))
+  // ㉑ 文档口径护栏：U / chase 的说明不许再说「索敌 / 朝敌人突进 / 追击」。
+  //    同一句错话在 HANDOFF、playbook、control、autoplay 里各写过一遍（2026-10-26 实测推翻），
+  //    留一条断言挡住第三次。
+  const { PLAYBOOK } = await import('./lib/playbook.mjs')
+  const pbText = JSON.stringify(PLAYBOOK)
+  const pbBad = pbText.match(/追击|朝敌人突进|自动索敌/g)
+  ok('playbook 不再宣称 U/chase 会索敌或突进', !pbBad, pbBad ? pbBad.join(',') : '')
+  ok('playbook 明确写了 U 不索敌', /不索敌/.test(pbText), '')
 
   // 菜单里的 Esc 由专门的菜单分支负责（见「停在菜单里怎么办」那组测试），
   // 脱困阶梯里不该再有 Esc：本来没菜单却按 Esc，反而会把暂停菜单打开。
