@@ -964,6 +964,33 @@ console.log('\n[6] 自主连玩策略')
     }
     const faces4 = seq4.filter((d) => d.action === 'face').length
     ok('连击数读不到时不会乱翻面（首跑 26 次抽搐的回归）', faces4 === 0, `face×${faces4}`)
+    // ⑤ 2026-10-26 四轮真机：`foeDir` 几乎总是非空（金色强化台、左上护盾黄格、连击数字都是黄的），
+    //    而原来「翻面」的前提写成了「`!foeDir`」⇒ 346 个动作一次都没翻过。
+    //    现在放宽成「指针空 or 指针指着当前朝向」，这条才活得下来。
+    const pf5b = mkPolicy('advance')
+    pf5b.decide(fightFrame({ enemyDir: 'right' }), { now: 0 })   // 朝向 right，指针也指 right
+    const seq5b = []
+    for (let i = 1; i <= 4; i++) {
+      seq5b.push(pf5b.decide(fightFrame({ enemyDir: 'right' }), { now: i * 800 }))
+    }
+    ok('指针指着当前朝向且打不中时也会翻面（foeDir 非空不再是死角）',
+      seq5b.some((d) => d.action === 'face'), seq5b.map((d) => d.action).join(','))
+    // ⑥ 处决节流：提示一直挂着，也不能每帧都按 L（键帽检测分不出 L/U/E，误判会锁死战斗）
+    const pEx = mkPolicy('advance')
+    const exSeq = []
+    for (let i = 0; i < 8; i++) {
+      exSeq.push(pEx.decide({
+        motion: 0.3, combo: 1, hudKick: 0, hudBright: 0.08, progress: 0.5, executePrompt: true,
+      }, { now: i * 300 }))
+    }
+    const exCount = exSeq.filter((d) => d.action === 'execute').length
+    ok('处决有冷却：提示挂着也不会每 300ms 按一次 L', exCount <= 2, `execute×${exCount}/8`)
+    // ⑦ 低血门槛放宽：她死在 血 38.9% / 盾 0%，而旧判据要求「血<30% 且 盾<20%」两条同时成立。
+    const pLow = mkPolicy('advance')
+    pLow.decide({ motion: 0.3, combo: 1, hudKick: 0, hudBright: 0.08, progress: 0.5, hp: 0.6, shield: 0.12 }, { now: 0 })
+    const dLow = pLow.decide({ motion: 0.3, combo: 1, hudKick: 0, hudBright: 0.08, progress: 0.5, hp: 0.25, shield: 0.004 }, { now: 2000 })
+    ok('血 42% + 破盾 → 进低血模式（旧 30% 门槛放过了她）', dLow.action === 'dash',
+      `${dLow.action}｜${dLow.why || ''}`)
   // ⑥ 血盾都快空了就撤、不再出招（2026-10-26 被打死两次之后补的硬规则）
   {
     const pf5 = mkPolicy('advance')
