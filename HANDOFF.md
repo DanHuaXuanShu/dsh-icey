@@ -58,8 +58,39 @@ plugin_manager action=set_bundle target=dsh-icey enabled=true
 （这是血泪：有一次改完直接跑，日志里还是被删掉的那段逻辑。）
 
 **如果当前会话没有 `plugin_manager` 这个工具**（2026-10-26 就是这种情况）：
-去 GUI 里「设置 → 插件」把 `dsh-icey` 关掉再打开，效果一样。没有重载就调 `icey_play`，
-输出里会带着**旧文案** —— 那是最快的「有没有重载」判据。
+现在插件自己带了一个 **`icey_dev`**（见下），先试它；再不行才去 GUI 里「设置 → 插件」
+把 `dsh-icey` 关掉再打开。
+
+### `icey_dev`：让改完的代码生效（2026-10-26 新增）
+
+以前改完 lib 只能让用户去 GUI 里点两下，这一步卡过很多次。现在有工具了：
+
+| action | 作用 | 副作用 |
+|---|---|---|
+| `stamp` | 列出**进程启动之后被改过的代码文件** —— 也就是「哪些改动还没生效」 | 无（只读） |
+| `probe` | 导出插件上下文的可用面：有哪些服务、哪些方法 | 无（只读） |
+| `reload` | 请 DSH 重载 `dsh-icey` | **有**；`apply=true` 才真调 |
+| `selfcheck` | 就地跑 `node selfcheck.mjs`，回尾部几行 | 无 |
+| `log` | 读重载日志（`$DSH_HOME/icey/devctl.log`） | 无 |
+
+标准用法就三步：
+
+```
+icey_dev action=stamp                  # 有没有未生效的改动？
+icey_dev action=probe                  # 有没有重载入口？（只读，先看清楚）
+icey_dev action=reload apply=true      # 有入口再动
+icey_dev action=stamp                  # 复测：进程启动时间变新了才算成功
+```
+
+⚠️ 两条实话：
+
+- **`reload` 用的 Cordis 内部接口是推断出来的**（服务名 `pluginManager`/`plugins`/`loader`，
+  方法名 `reload`/`restart`/`enable`），没有官方文档背书。所以它默认只探不卸，
+  每次都写日志。不成功就是「这条 DSH 版本没给插件开这个口子」，不是没接好。
+- **装这个工具本身需要一次重载**（工具注册在 `agent.js`，改它同样要重载才生效）。
+  也就是说：最后一次手动开关，之后就能自己转起来。
+
+没有重载就调 `icey_play`，输出里会带着**旧文案** —— 那是最快的「有没有重载」判据。
 （例：摘要开头还是「advance：往右推进」就说明还是旧代码；新代码会显示「advance，往左/往右」。）
 
 ### 验证

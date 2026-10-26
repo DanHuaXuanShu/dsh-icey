@@ -19,6 +19,7 @@ import { session } from './lib/session.mjs'
 import { summarizeRun } from './lib/autoplay.mjs'
 // 批量动作：把「一串动作」压进一次工具调用，省掉中间的模型往返（每次 6~12 秒）
 import { parseActionSpec, MAX_SEQUENCE } from './lib/control.mjs'
+import { registerIceyDev } from './lib/devtool.mjs'
 
 export const name = 'dsh-icey-agent'
 export const inject = ['tools', 'attachments']
@@ -29,7 +30,7 @@ export const inject = ['tools', 'attachments']
 // 加工具时只改这一处。
 export const TOOL_NAMES = [
   'icey_start', 'icey_status', 'icey_look', 'icey_screenshot', 'icey_act',
-  'icey_playbook', 'icey_auto', 'icey_play', 'icey_stop',
+  'icey_playbook', 'icey_auto', 'icey_play', 'icey_stop', 'icey_dev',
 ]
 
 const hostDeps = await loadHostDeps()
@@ -117,7 +118,10 @@ export function parametersForDefineTool(params, local) {
   return local ? toSchema(params) : params
 }
 
+let pluginCtx = null
+
 export function apply(ctx) {
+  pluginCtx = ctx
   const tool = (spec) => ctx.effect(() => ctx.tools.register(defineTool({
     ...spec,
     parameters: parametersForDefineTool(spec.parameters, localFallback),
@@ -607,4 +611,7 @@ export function apply(ctx) {
       }
     },
   })
+
+  /* 开发维护（stamp / probe / reload / selfcheck）—— 正常玩游戏用不到 */
+  registerIceyDev(tool, () => pluginCtx)
 }

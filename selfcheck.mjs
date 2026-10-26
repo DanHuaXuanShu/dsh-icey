@@ -901,6 +901,26 @@ console.log('\n[6] 自主连玩策略')
     const pf3 = mkPolicy('advance')
     const d3 = pf3.decide(fightFrame({ enemyDir: 'left' }), { now: 1000 })
     ok('看到敌人图标在左边就朝左转', d3.action === 'face' && d3.dir === 'left', `${d3.action}/${d3.dir}`)
+    // ④ 回归：连击数**读不到**时（战斗已结束 / HUD 没计数）绝对不能翻面。
+    //    2026-10-26 首跑就是这里错了：combo 读不到 ⇒ comboGainAt 永远停在过去
+    //    ⇒ 每帧都算「停滞」⇒ 60 秒 face 了 26 次、人一步没走。
+    const pf4 = mkPolicy('advance')
+    pf4.decide(fightFrame(), { now: 0 })          // 先真的进一次战斗
+    const seq4 = []
+    for (let i = 1; i <= 10; i++) {
+      seq4.push(pf4.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5 }, { now: i * 800 }))
+    }
+    const faces4 = seq4.filter((d) => d.action === 'face').length
+    ok('连击数读不到时不会乱翻面（首跑 26 次抽搐的回归）', faces4 === 0, `face×${faces4}`)
+  // ⑤ icey_dev 的 stamp 必须能算出「进程启动时刻」并扫到代码文件 —— 这是「改动有没有生效」的唯一判据
+  {
+    const { stampReport } = await import('./lib/devctl.mjs')
+    const r = stampReport()
+    ok('stamp 扫到了插件自己的代码文件', r.files.length > 5, `${r.files.length} 个`)
+    ok('stamp 的进程启动时刻在一小时之内（没算错单位）', Math.abs(Date.now() - r.startedAt) < 3600e3,
+      `${Math.round((Date.now() - r.startedAt) / 1000)}s`)
+    ok('stamp 能给出未生效改动的条数（可以为 0）', Array.isArray(r.stale), String(r.stale.length))
+  }
   }
 
   // 菜单里的 Esc 由专门的菜单分支负责（见「停在菜单里怎么办」那组测试），
