@@ -927,6 +927,15 @@ console.log('\n[6] 自主连玩策略')
     // 低血时那两个「花血换免疫」的强化技必须被压掉，否则等于拿命换几帧无敌
     ok('低血时不会去放消耗生命的强化技', !seq5.some((d) => d.action === 'storm' || d.action === 'shade'),
       seq5.map((d) => d.action).join(','))
+    // HUD 读不到（m.hp/m.shield 缺失）≠ 血是 0：不许因此进低血模式
+    const pf6 = mkPolicy('advance')
+    pf6.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, hp: 0.6, shield: 0.12 }, { now: 0 })
+    const seq6 = []
+    for (let i = 1; i <= 4; i++) {
+      seq6.push(pf6.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08 }, { now: i * 800 }))
+    }
+    const panic6 = seq6.filter((d) => /低血/.test(d.why || '')).length
+    ok('HUD 读不到时不会误进低血模式（?? 0 的坑）', panic6 === 0, `低血×${panic6}`)
   }
   // ⑤ icey_dev 的 stamp 必须能算出「进程启动时刻」并扫到代码文件 —— 这是「改动有没有生效」的唯一判据
   {
