@@ -1142,6 +1142,51 @@ console.log('\n[6] 自主连玩策略')
   ok('打架时会打出连段', !!sawCombo, sawCombo ? JSON.stringify(sawCombo) : '40 次决策里没出现 combo')
   if (sawCombo) ok('连段带上了键序列', /^[jilu89wsado+|]+$/.test(sawCombo.keys || ''), String(sawCombo.keys))
 
+  // ㉗b 战斗三档的「遥测」：必须留下能分开三种原因的证据
+  //     背景：三档上线后日志里从没出现过低档位，但分不清是「真没掉血」「检测被污染」
+  //     还是「基线被锚死」。所以遥测要同时留原始读数、基线和换档记录。
+  {
+    const { describeCombat } = await import('./lib/autoplay.mjs')
+    const pTier = createPolicy('advance')
+    // 先满血满盾打几帧（把基线立起来）
+    for (let i = 0; i < 6; i++) {
+      pTier.decide({ motion: 0.3, combo: 1, hudKick: 0, hudBright: 0.08, progress: 0.5, hp: 0.69, shield: 0.10 }, { now: i * 300 })
+    }
+    const cs0 = pTier.combatStats
+    ok('战斗帧会被计入遥测', cs0.frames >= 6, `frames=${cs0.frames}`)
+    ok('基线取到了满血实测值', Math.abs(cs0.hpBaseline - 0.69) < 0.001 && Math.abs(cs0.shieldBaseline - 0.10) < 0.001,
+      `hp基线=${cs0.hpBaseline} shield基线=${cs0.shieldBaseline}`)
+    // 再打到破盾+血少：必须换档，且换档记录里带着原始读数
+    for (let i = 6; i < 10; i++) {
+      pTier.decide({ motion: 0.3, combo: 1, hudKick: 0, hudBright: 0.08, progress: 0.5, hp: 0.30, shield: 0.01 }, { now: i * 300 })
+    }
+    const cs1 = pTier.combatStats
+    ok('掉血破盾后真的会换档', cs1.changes.length >= 1 && cs1.tierFrames.danger > 0,
+      `changes=${JSON.stringify(cs1.changes)} danger帧=${cs1.tierFrames.danger}`)
+    const ch = cs1.changes[0] || {}
+    ok('换档记录带原始读数与基线（能分开「没掉血」和「检测不准」）',
+      typeof ch.hp === 'number' && typeof ch.hpBaseline === 'number' && ch.to === 'danger',
+      JSON.stringify(ch))
+    const desc = describeCombat(cs1)
+    ok('档位摘要同时露出原始读数和基线', /原始读数最低/.test(desc) && /基线/.test(desc) && /换档/.test(desc), desc)
+    ok('一次都没进战斗时摘要不装懂', /没判定过战斗/.test(describeCombat({ frames: 0 })), describeCombat({ frames: 0 }))
+  }
+
+  // ㉗c 摘要里的推进方向必须是实际方向
+  //     血泪：预设描述原来写死「往右推进」，dir=left 时日志照样说往右，
+  //     上一轮因此误判成「dir 参数没传进来」，白查一轮。
+  {
+    const runLeft = { seconds: 10, preset: 'advance', dir: 'left', actions: { move: 3 }, events: [], frames: 0, stopped: '测试' }
+    const sLeft = summarizeRun(runLeft)
+    ok('dir=left 时摘要说往左，不说往右', /往左/.test(sLeft) && !/往右/.test(sLeft), sLeft.split('\n')[0])
+    const runRight = { ...runLeft, dir: 'right' }
+    const sRight = summarizeRun(runRight)
+    ok('dir=right 时摘要说往右', /往右/.test(sRight), sRight.split('\n')[0])
+    // 遥测必须进摘要，否则模型看不到「这轮最低血掉到多少」
+    const sCombat = summarizeRun({ ...runLeft, combat: { frames: 3, tierFrames: { healthy: 3, cautious: 0, danger: 0 }, minHp: 0.6, minShield: 0.09, minHpRatio: 0.87, minShieldRatio: 0.9, hpBaseline: 0.69, shieldBaseline: 0.10, changes: [] } })
+    ok('战斗遥测进了摘要', /战斗档位/.test(sCombat) && /全程没换过档/.test(sCombat), sCombat)
+  }
+
   // ㉒ 确认键上限：盲按 Enter 可能在菜单里选中「退出」把游戏退掉（真出过事）
   const p13 = createPolicy('advance')
   let interacts = 0
