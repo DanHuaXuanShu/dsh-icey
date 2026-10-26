@@ -32,3 +32,5 @@ desktop.ini
 
 # 测试素材例外：自检要用的真实画面切片（很小，必须进仓库，否则 CI 上没有）
 !probe/fixtures/*.png
+
+.commitmsg.txt
