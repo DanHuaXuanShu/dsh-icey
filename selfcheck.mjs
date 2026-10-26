@@ -991,6 +991,29 @@ console.log('\n[6] 自主连玩策略')
     const dLow = pLow.decide({ motion: 0.3, combo: 1, hudKick: 0, hudBright: 0.08, progress: 0.5, hp: 0.25, shield: 0.004 }, { now: 2000 })
     ok('血 42% + 破盾 → 进低血模式（旧 30% 门槛放过了她）', dLow.action === 'dash',
       `${dLow.action}｜${dLow.why || ''}`)
+    // ⑧ 字幕裁图（2026-10-26 加）：插件不做 OCR，把字幕区按原分辨率裁出来交给模型读。
+    //    框必须合法、且比分析用的 SUBTITLE_BOX 更宽 —— 裁窄了会把句首句尾的字切掉。
+    {
+      const L = await import('./lib/games/icey/layout.mjs')
+      const c = L.SUBTITLE_CROP
+      const b = L.SUBTITLE_BOX
+      ok('字幕裁图框在画面内且不自相矛盾',
+        c.x0 >= 0 && c.y0 >= 0 && c.x1 <= 1 && c.y1 <= 1 && c.x0 < c.x1 && c.y0 < c.y1,
+        JSON.stringify(c))
+      ok('字幕裁图框比分析框宽（不切字）',
+        c.x0 <= b.x0 && c.x1 >= b.x1 && c.y0 <= b.y0 && c.y1 >= b.y1,
+        `crop=${JSON.stringify(c)} box=${JSON.stringify(b)}`)
+    }
+    // ⑨ 字幕优先于交互提示：agent.js 里先找 subtitle 帧、再找 prompt 帧。
+    //    旁白在说什么，比「这里能不能按 Enter」更影响决策（ICEY 的 Meta 核心）。
+    {
+      const { promises: fsp } = await import('node:fs')
+      const src = await fsp.readFile(new URL('./agent.js', import.meta.url), 'utf8')
+      const iSub = src.indexOf("reason === 'subtitle'")
+      const iPrompt = src.indexOf("reason === 'prompt'")
+      ok('agent.js 把字幕裁图排在交互提示之前（Meta 旁白优先）',
+        iSub > 0 && iPrompt > 0 && iSub < iPrompt, `sub@${iSub} prompt@${iPrompt}`)
+    }
   // ⑥ 血盾都快空了就撤、不再出招（2026-10-26 被打死两次之后补的硬规则）
   {
     const pf5 = mkPolicy('advance')

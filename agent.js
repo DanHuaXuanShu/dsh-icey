@@ -571,14 +571,29 @@ export function apply(ctx) {
             })),
           )
           image = refs[0] || null
-          // 第二张是「交互提示区」的原分辨率裁图：模型可以直接读上面的字，
-          // 判断该按哪个键（比像素阈值猜可靠得多）
+          // 第二张优先给**字幕区**，其次才是交互提示区：
+          //   · 字幕 = 旁白在说什么。ICEY 的 Meta 玩法就是旁白直接命令/诱导你
+          //     （「往左走」「别碰那个按钮」），听不听是决策，不是装饰 ⇒ 优先级最高。
+          //   · 提示区 = 「这里能不能按 Enter」，只在没有旁白时才占这个位置。
+          const subIdx = res.frames.findIndex((f) => f.reason === 'subtitle')
           const promptIdx = res.frames.findIndex((f) => f.reason === 'prompt')
-          if (promptIdx >= 0) {
-            extraImage = refs[promptIdx] || null
-            lines.push('（第二张图是**交互提示区**的原分辨率裁图 —— 上面若有提示文字，直接读它决定按什么键）')
+          const pickIdx = subIdx >= 0 ? subIdx : promptIdx
+          if (pickIdx > 0) {
+            extraImage = refs[pickIdx] || null
+            lines.push(subIdx >= 0
+              ? '（第二张图是**旁白/字幕区**的原分辨率裁图 —— 直接读上面的字：它在说什么、是不是在下命令；'
+                + '听不听由你判断，旁白经常故意误导）'
+              : '（第二张图是**交互提示区**的原分辨率裁图 —— 上面若有提示文字，直接读它决定按什么键）')
+          } else if (pickIdx === 0) {
+            // 这一轮没有现场整屏（比如没卡住、也没到采样点），第一张就是那张裁图
+            lines.push(subIdx >= 0
+              ? '（这张图就是**旁白/字幕区**的原分辨率裁图 —— 直接读上面的字）'
+              : '（这张图就是**交互提示区**的原分辨率裁图 —— 直接读上面的字）')
           }
-          if (refs.length > 2) lines.push(`（另外还留了 ${refs.length - 2} 张，需要看的话用 icey_look 单独取）`)
+          if (extraImage) {
+            const rest = refs.length - 1 - (pickIdx > 0 ? 1 : 0)
+            if (rest > 0) lines.push(`（另外还留了 ${rest} 张，需要看的话用 icey_look 单独取）`)
+          }
         } catch (e) {
           lines.push(`（途中截图没存成：${e?.message || e}）`)
         }
