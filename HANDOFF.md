@@ -583,3 +583,50 @@ PowerShell 5.1 按 ANSI 读无 BOM 的 UTF-8 文件，会把整个文件写成�
 而是一个**把游戏当 API 调用的工具**。
 
 改代码时守住这条，很多设计选择就有答案了。
+
+---
+
+## 十一、2026-10-26 晚：重载通了、实机四轮、修了四处
+
+### ✅ 重载终于能自动做了（不用再手点 GUI）
+
+`icey_dev reload` 一直失败，根因找到了，在宿主源码里（`app.asar`）：
+
+- 互斥锁挂在 **`hmr` 服务**上：`runExclusive()` 禁止嵌套，`runReload()` = `runExclusive` + 等 `applicationReady`；
+- `reconcileProfile(requiredIds)` 第一行就是 `if (this.executing.getStore() !== true) throw "HMR profile reconciliation must run inside runExclusive"`；
+- `PluginManager.reload()` **自己不在互斥区里**，它直接去调 `reconcileProfile` ⇒ 必然被拒；
+- 对比 `setPluginEnabled()` 走 `change() → configure() → hmr.runExclusive(...)`，**能过**；
+- `devctl.mjs` 在 `ctx.fiber / ctx / ctx.root` 上找锁，从来没去看 `ctx.get('hmr')` —— 找错地方了。另外它把 `'dsh-icey'` 当字符串传给要数组的 `requiredIds`，`enable/toggle/restartPlugin` 那几个名字在宿主里根本不存在（死分支）。
+
+**现在可行的重载路径（已实测两次成功）**：用宿主工具 `plugin_manager`，
+`set_plugin target="include:dsh-icey" enabled=false` → `enabled=true`。entryId 从 `list_bundles` 里查（bundle 名 `dsh-icey`，rowId `dsh-icey`，entryId `include:dsh-icey`）。
+
+⚠️ **别只信 `icey_dev stamp`**：第二次重载后 `LOADED_AT` 停在第一次的时刻没更新（疑似 `devctl.mjs` 的模块没被重新求值），但它报「4 个文件没生效」的同时，实机摘要里已经出现新文案了。**判据要用行为**：看 `血量跌 X%（血条读数…）` 这种新文案、或 `续连 1/3` 这种新计数，比看时间戳可靠。
+
+### ✅ 实机四轮（120 + 90 + 120 + 60 秒）
+
+三轮旧代码的结论：
+
+| 现象 | 数据 |
+|---|---|
+| 三档遥测真的上线了 | 第 3 轮 健康 46 / 收敛 11 / 危险 7 帧，**换档 2 次**（healthy→cautious 血 61.4% 盾 5.2%；cautious→danger 血 32.3% 盾 0.0%），事件里带原始读数 |
+| `face` 三轮 **0 次** | 346 个动作里没有一次转身。不是「抽搐」，是**根本不触发**（连击数一直在涨 ⇒ `comboStale` 恒假） |
+| `execute` 三轮 **0 次** | 第 4 轮（修完后）才第一次出现 `execute×2` + `execute-seen` |
+| 人被打死过一轮 | 最低血 38.9%、盾 0%，`panic` 要「血<30% 且盾<20%」两条同时成立 ⇒ 从 38.9% 被秒，条件没到 |
+| damage 事件大量误报 | 三轮 48 条，5 条「跌 100%」全都是场景切换/黑屏；对着暂停画面核对过，真实只掉一点点 |
+
+### 修了四处（都有 selfcheck 断言，319 项全过）
+
+1. **damage 误报**（`lib/game.mjs`）：基线从 `hudBright`（HUD 亮像素占比）换成 **`metrics.hp`（血条蓝占比）**，并要求 `hudBright ≥ 2%`（过场/菜单/死亡画面 HUD 是消失的）且 `hp > 0.5%`（暂停画面会读成 0）。文案改成「血量跌 X%（血条读数 a% / 基线 b%）」。
+2. **续连自锁**（`lib/autoplay.mjs`）：新增 `MAX_COMBO_CHAIN = 3`，连续续连到 3 套就让位给权重表，窗口断开（≥900ms）清零。实机验证：出现了 `续连 1/3`、`2/3`、`3/3`，之后 heavy/attack/chase/dash 都回来了。
+3. **hud 单位错位**（`lib/games/icey/scene.mjs`）：新增 `hudRatio()`，把 0~255 亮度均值归一成 0~1（`>1` 就当 0~255）；`blank` 判据和 `StuckDetector` 都改用它。
+4. **卡住检测的「场景变化」死条件**（`lib/autoplay.mjs`）：原来把**上一帧**的 `lastScene` 传进 `update()`，而 `update` 内部比较的也是它 ⇒ 恒等。改成先归一次类拿本帧 scene 再喂检测器。
+
+### 🔴 还没解决的
+
+- **`face` 需要重新设计触发条件**：现在的判据（`foeDir` 或「连击停滞 + 刚出过招」）在实战里一次都不成立。要么承认它没用并删掉，要么换成「连续几套后连击数没涨」这种更宽的条件。
+- **处决没有冷却/上限**（`autoplay.mjs:811`）：第 4 轮出现了处决，但仍是「只要看到键帽就按 L」，没有上限。
+- **`panic` 阈值太严**：血 38.9% 就死了，而门槛是 30%。这是「差一点」的类型，要不要放宽得再拿一轮数据。
+- **`damage` 新代码仍会在转场帧报一次**「血量跌 100%」——`hp≤0.5%` 已挡住大部分，但转场那一帧如果血条还在、只是被遮，仍可能漏网。
+- **`stamp` 的 LOADED_AT 不可靠**（见上）。
+

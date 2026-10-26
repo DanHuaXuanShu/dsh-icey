@@ -451,7 +451,7 @@ console.log('\n[3] 控制映射')
   // 这一层解决的是「没有对应分支的局面」—— 以前遇到剧情锁、商店、需要解谜的门，
   // decide() 只会掉进默认的「继续往右走」，然后一次次撞同一面墙。
   {
-    const { classifyScene, StuckDetector, STUCK_MS } = await import('./lib/games/icey/scene.mjs')
+    const { classifyScene, StuckDetector, STUCK_MS, hudRatio } = await import('./lib/games/icey/scene.mjs')
 
     // 1. 菜单优先于一切
     ok('场景：有红色警告文字行 → menu',
@@ -524,6 +524,58 @@ console.log('\n[3] 控制映射')
         i++
       }
       ok('卡住检测：场景标签在变 → 不算卡住', stuck === false, `t=${t}`)
+    }
+
+    // 11. hud 单位归一（2026-10-26 三轮实机 330 秒之后补的回归）
+    //     真实 tick 里 analyzeFrame 给的是平均亮度 0~255，而门限按 0~1 比例写 —— 差 255 倍。
+    //     旧代码下「HUD 亮一点」就算有进展，45 秒无进展永远攒不满 ⇒ 卡住检测结构上不会触发。
+    {
+      eq('hudRatio：0~255 亮度均值 → 归一成比例', +hudRatio(64).toFixed(3), 0.251)
+      eq('hudRatio：本来就是 0~1 比例的，原样放过', hudRatio(0.25), 0.25)
+      const d = new StuckDetector({ stuckMs: STUCK_MS })
+      let t = 0
+      d.update('explore', { subtitle: 0.001, hud: 64 }, t)
+      let stuck = false
+      for (t = 1000; t <= STUCK_MS + 5000; t += 1000) {
+        stuck = d.update('explore', { subtitle: 0.001, hud: 64 }, t)
+      }
+      ok('卡住检测：hud 喂 0~255 单位时，45 秒无进展照样判卡住', stuck === true, `t=${t}`)
+      // 反过来也要锁：真实的 1~2 个灰阶抖动不能算进展（否则又回到「永不触发」）
+      const d2 = new StuckDetector({ stuckMs: STUCK_MS })
+      let t2 = 0
+      d2.update('explore', { subtitle: 0.001, hud: 64 }, t2)
+      let stuck2 = false
+      let k = 0
+      for (t2 = 1000; t2 <= STUCK_MS + 5000; t2 += 1000) {
+        stuck2 = d2.update('explore', { subtitle: 0.001, hud: 64 + (k++ % 2) }, t2)
+      }
+      ok('卡住检测：±1 灰阶的抖动不算进展', stuck2 === true, `t=${t2}`)
+    }
+
+    // 12. 续连不能自锁（2026-10-26 实机：一轮 125 个动作里 46 个是 combo，权重表被架空）
+    {
+      const { createPolicy: mkPolicy12, MAX_COMBO_CHAIN } = await import('./lib/autoplay.mjs')
+      const pol = mkPolicy12('advance')
+      const frame = {
+        motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5,
+        hp: 0.69, shield: 0.10, menuRows: 0,
+      }
+      let streak = 0
+      let maxStreak = 0
+      let others = []
+      for (let i = 0; i < 60; i++) {
+        const d = pol.decide(frame, { now: i * 690 })
+        if (d.action === 'combo') {
+          streak++
+          if (streak > maxStreak) maxStreak = streak
+        } else {
+          streak = 0
+          others.push(d.action)
+        }
+      }
+      ok('续连不会自锁：连续续连不超过上限', maxStreak <= MAX_COMBO_CHAIN, `maxStreak=${maxStreak}`)
+      ok('续连让位后，权重表里的其它动作真的能出场',
+        others.length > 0, `others=${others.join(',')}`)
     }
   }
 
