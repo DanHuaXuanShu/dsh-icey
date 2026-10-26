@@ -447,6 +447,86 @@ console.log('\n[3] 控制映射')
     )
   }
 
+  // ── 场景分类 + 卡住检测（2026-10-26）──────────────────────────────
+  // 这一层解决的是「没有对应分支的局面」—— 以前遇到剧情锁、商店、需要解谜的门，
+  // decide() 只会掉进默认的「继续往右走」，然后一次次撞同一面墙。
+  {
+    const { classifyScene, StuckDetector, STUCK_MS } = await import('./lib/games/icey/scene.mjs')
+
+    // 1. 菜单优先于一切
+    ok('场景：有红色警告文字行 → menu',
+      classifyScene({ menuRows: 1, combo: 0.03, hud: 0.5 }).scene === 'menu',
+      JSON.stringify(classifyScene({ menuRows: 1, combo: 0.03, hud: 0.5 })))
+
+    // 2. 连击数在涨 → combat（哪怕同时有字幕，也该打不该读字）
+    ok('场景：连击数在涨 → combat',
+      classifyScene({ menuRows: 0, combo: 0.03, subtitle: 0.01, hud: 0.5 }).scene === 'combat')
+    ok('场景：战斗屏障亮着 → combat',
+      classifyScene({ menuRows: 0, combo: 0, barrier: true, hud: 0.5 }).scene === 'combat')
+
+    // 3. 旁白在说话
+    ok('场景：下方白字 → dialog',
+      classifyScene({ menuRows: 0, combo: 0, subtitle: 0.01, hud: 0.5 }).scene === 'dialog')
+
+    // 4. 黑屏（过场/加载/标题）
+    ok('场景：HUD 区几乎全暗 → blank',
+      classifyScene({ menuRows: 0, combo: 0, subtitle: 0, hud: 0.005 }).scene === 'blank')
+
+    // 5. 黑屏 + 字幕 ⇒ 按 dialog 处理（过场字幕要按确认跳过，不是干等）
+    ok('场景：黑屏但有字幕 → dialog（不是 blank）',
+      classifyScene({ menuRows: 0, combo: 0, subtitle: 0.01, hud: 0.005 }).scene === 'dialog')
+
+    // 6. 卡住标记
+    ok('场景：外部标记卡住 → stuck',
+      classifyScene({ menuRows: 0, combo: 0, subtitle: 0, hud: 0.5 }, { stuck: true, stuckMs: 60000 }).scene === 'stuck')
+
+    // 7. 默认正常
+    ok('场景：有 HUD、没打、没说话 → explore',
+      classifyScene({ menuRows: 0, combo: 0, subtitle: 0, hud: 0.5 }).scene === 'explore')
+
+    // 8. 卡住检测：画面一直不变，超过阈值 → 卡住
+    {
+      const d = new StuckDetector({ stuckMs: STUCK_MS })
+      const frame = { subtitle: 0.001, hud: 0.5, combo: 0 }
+      let t = 0
+      d.update('explore', frame, t)          // 第一次，建立基线
+      let stuck = false
+      for (t = 1000; t <= STUCK_MS + 5000; t += 1000) {
+        stuck = d.update('explore', frame, t)
+      }
+      ok('卡住检测：画面长期不变 → 判卡住', stuck === true, `t=${t}`)
+    }
+
+    // 9. 卡住检测：中间有进展（字幕变了）→ 不算卡住
+    {
+      const d = new StuckDetector({ stuckMs: STUCK_MS })
+      let t = 0
+      d.update('explore', { subtitle: 0.001, hud: 0.5 }, t)
+      let stuck = false
+      for (t = 1000; t <= STUCK_MS + 5000; t += 1000) {
+        // 每 10 秒换一次字幕（模拟剧情推进）
+        const sub = (t % 10000 === 0 && t > 0) ? (t % 20000 === 0 ? 0.05 : 0.001) : undefined
+        stuck = d.update('explore', { subtitle: sub ?? d.lastSubtitle, hud: 0.5 }, t)
+      }
+      ok('卡住检测：字幕在变 → 不算卡住', stuck === false, `t=${t}`)
+    }
+
+    // 10. 卡住检测：场景标签变化也算进展
+    {
+      const d = new StuckDetector({ stuckMs: STUCK_MS })
+      let t = 0
+      d.update('explore', { subtitle: 0.001, hud: 0.5 }, t)
+      let stuck = false
+      const seq = ['explore', 'combat', 'explore', 'combat', 'explore']
+      let i = 0
+      for (t = 1000; t <= STUCK_MS + 5000; t += 1000) {
+        stuck = d.update(seq[i % seq.length], { subtitle: 0.001, hud: 0.5 }, t)
+        i++
+      }
+      ok('卡住检测：场景标签在变 → 不算卡住', stuck === false, `t=${t}`)
+    }
+  }
+
   const dYes = planAction({ action: 'yes' }, { keyMap: DEFAULT_KEYMAP })
   const dNo = planAction({ action: 'no' }, { keyMap: DEFAULT_KEYMAP })
   eq('对话框选「是」→ 点 q', dYes.steps.map((s) => s.key), ['q'])
