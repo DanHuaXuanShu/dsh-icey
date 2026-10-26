@@ -34,3 +34,5 @@ desktop.ini
 !probe/fixtures/*.png
 
 .commitmsg.txt
+
+probe/video/
