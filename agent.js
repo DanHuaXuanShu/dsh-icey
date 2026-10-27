@@ -85,15 +85,27 @@ function describeStatus(st) {
   // 后台战斗的运行态 + 上一场的结局（2026-10-27 加）。
   // 后台模式下模型拿不到同步返回值，停手原因只能从这里读 —— 不给它，模型就没法复盘。
   const bg = st.background
+  // 动作明细：只报「动作 N 次」等于复不了盘（不知道打的是连段还是普攻、有没有闪）
+  const fmtActions = (a) => Object.entries(a || {})
+    .filter(([, v]) => v > 0)
+    .sort((x, y) => y[1] - x[1])
+    .map(([k, v]) => `${k}×${v}`)
+    .join(' ')
   if (bg?.running) {
     lines.push(`⚔️ 后台战斗进行中：已 ${Math.round((bg.elapsedMs || 0) / 1000)} 秒 / 上限 ${bg.maxSeconds} 秒，`
       + `focus=${bg.order.focus} style=${bg.order.style}${bg.abortRequested ? '（已请求停手，下一步停）' : ''}。`)
     if (bg.orderError) lines.push(`  ⚠️ 微调参数被拒：${bg.orderError}`)
+    const acts = fmtActions(bg.actions)
+    if (acts) lines.push(`  动作：${acts}`)
     if (bg.lastEvents?.length) lines.push(`  最近：${bg.lastEvents.join(' / ')}`)
   } else if (bg?.last) {
     const l = bg.last
-    lines.push(`上一场后台战斗：${l.seconds} 秒，停因「${l.stopped || '未知'}」，`
-      + `动作 ${Object.values(l.actions || {}).reduce((a, b) => a + b, 0)} 次。`)
+    lines.push(`上一场后台战斗：${l.seconds} 秒（${l.preset || '?'}），停因「${l.stopped || '未知'}」。`)
+    const acts = fmtActions(l.actions)
+    if (acts) lines.push(`  动作：${acts}`)
+    if (l.order && (l.order.focus !== 'auto' || l.order.style !== 'auto')) {
+      lines.push(`  当时微调：focus=${l.order.focus} style=${l.order.style}`)
+    }
   }
   return lines.join('\n')
 }

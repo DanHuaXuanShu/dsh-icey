@@ -1269,7 +1269,15 @@ console.log('\n[6] 自主连玩策略')
   const atkShare = (ACTION_WEIGHTS.fight.combo + ACTION_WEIGHTS.fight.heavy + ACTION_WEIGHTS.fight.attack) / fightTotal
   const moveShare = (ACTION_WEIGHTS.fight.dash + ACTION_WEIGHTS.fight.chase + (ACTION_WEIGHTS.fight.move || 0)) / fightTotal
   ok('战斗时攻击占比 ≥70%（用户要求攻击欲望高）', atkShare >= 0.7, (atkShare * 100).toFixed(1) + '%')
-  ok('战斗时位移占比 ≤10%（用户要求减少位移）', moveShare <= 0.1, (moveShare * 100).toFixed(1) + '%')
+  // 2026-10-27 用户要求「闪避更频繁（中等档：一档 dash 2、二三档 3）」，
+  // 所以这条从 ≤10% 放宽到 ≤13%。同时给危险档设上限，防止回到 2026-10-26
+  // 被明确否掉的频率（那版 120 秒闪了 42 次、几乎每三秒一次，等于放弃输出）。
+  ok('一档战斗位移占比 ≤13%（闪避加密后的上限）', moveShare <= 0.13, (moveShare * 100).toFixed(1) + '%')
+  {
+    const dTotal = Object.values(ACTION_WEIGHTS.fightDanger).reduce((a, b) => a + b, 0)
+    const dMove = (ACTION_WEIGHTS.fightDanger.dash + ACTION_WEIGHTS.fightDanger.chase) / dTotal
+    ok('危险档位移占比 ≤35%（闪避加密也不能变成不打）', dMove <= 0.35, (dMove * 100).toFixed(1) + '%')
+  }
   const spread = new Set()
   for (let i = 0; i < 200; i++) spread.add(pickWeighted(ACTION_WEIGHTS.explore, i))
   ok('探索权重能出多种动作（有变化）', spread.size >= 3, [...spread].join(','))
@@ -1680,6 +1688,40 @@ console.log('\n[6] 自主连玩策略')
   const bgBook = fsSync.readFileSync(new URL('./lib/playbook.mjs', import.meta.url), 'utf8')
   ok('规则卡写了「开一次就撒手」', /就撒手/.test(bgBook), '')
   ok('规则卡写明没有「撤退」选项', /没有「撤退」这个选项/.test(bgBook), '')
+  ok('规则卡写明打不过也不脱战', /打不过也不脱战/.test(bgBook), '')
+
+  // ㉖ 空战（2026-10-27 用户要求「加空战」，形态：跳起 → 空中 J 连 → 闪取消收尾）
+  //    关键不是「写了三条字符串」，而是**这三条能真的被解析成按键序列** ——
+  //    连段语法里 k=跳、o=闪、|=分阶段、x+y=按住方向点 J，写错一个字符就静默变成别的动作。
+  {
+    const { parseActionSpec: parseSpec, planAction: planAir } = await import('./lib/control.mjs')
+    const airCombos = ['k|jjjj|o', 'k|jjj|o', 'w+j|jjj|o']
+    ok('空连进了招式表', airCombos.every((c) => COMBOS.includes(c)),
+      airCombos.filter((c) => !COMBOS.includes(c)).join(','))
+    ok('空连都有非零权重', airCombos.every((c) => (COMBO_WEIGHTS[c] || 0) > 0),
+      airCombos.map((c) => `${c}:${COMBO_WEIGHTS[c]}`).join(' '))
+    // 逐条解析：跳 → 若干 J → 闪，三样都要在
+    let airOk = true
+    let airDetail = ''
+    for (const c of airCombos) {
+      const spec = parseSpec(`combo:${c}`)
+      const steps = spec ? planAir(spec).steps || [] : []
+      const labels = steps.map((s) => s.label).join('→')
+      // 两种起手：k = 空格跳；w+j = ↑+J 激发（没有空格，标签是「按住 W…」）
+      const startOk = c.startsWith('k|') ? /空格/.test(labels) : /按住 W/.test(labels)
+      const endsWithDash = /O$/.test(labels)
+      const jCount = (labels.match(/J/g) || []).length
+      if (steps.length < 4 || !startOk || !endsWithDash || jCount < 3) {
+        airOk = false
+        airDetail = `${c} → ${labels || '(空)'}`
+        break
+      }
+    }
+    ok('空连能解析成「跳 → 至少 3 次 J → 闪」', airOk, airDetail)
+    ok('闪避权重按用户要求加密（一档 2、二三档 3）',
+      ACTION_WEIGHTS.fight.dash === 2 && ACTION_WEIGHTS.fightCautious.dash === 3 && ACTION_WEIGHTS.fightDanger.dash === 3,
+      `${ACTION_WEIGHTS.fight.dash}/${ACTION_WEIGHTS.fightCautious.dash}/${ACTION_WEIGHTS.fightDanger.dash}`)
+  }
 }
 
 /* ---------- 汇总 ---------- */
