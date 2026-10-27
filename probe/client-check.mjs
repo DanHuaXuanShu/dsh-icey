@@ -81,9 +81,13 @@ try {
   console.log('❌ apply 抛错：', e?.message)
 }
 console.log('注册的 slot:', slots.map((s) => `${s.name}[${s.id || s.key}]`).join(', '))
-for (const want of ['main', 'sidebar.panellist', 'settings.section']) {
-  if (!slots.some((s) => s.name === want)) errors.push(`没注册 ${want}`)
+// 0.6.0 起**刻意不注册**主面板和侧栏入口（理由见 README 的「为什么没有面板」一节：
+// 游戏占着前台，要看面板就得切窗口，切过去游戏就看不见了）。
+// 所以这里反过来断言 —— 它们要是又冒出来，说明有人把面板加回去了。
+for (const banned of ['main', 'sidebar.panellist']) {
+  if (slots.some((s) => s.name === banned)) errors.push(`不该再注册 ${banned}（0.6.0 起面板已删，见 README）`)
 }
+if (!slots.some((s) => s.name === 'settings.section')) errors.push('没注册 settings.section')
 if (cssTags.length === 0) errors.push('样式没挂上')
 
 // ---- 验证二进制帧解析（复刻 client.js 里的 consume 逻辑）----
