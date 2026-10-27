@@ -1121,31 +1121,38 @@ console.log('\n[6] 自主连玩策略')
       ok('规则卡有「谁的手在键盘上」一节', Array.isArray(PLAYBOOK.hands) && PLAYBOOK.hands.length >= 4,
         `hands=${PLAYBOOK.hands?.length}`)
       const h = (PLAYBOOK.hands || []).join('\n')
-      ok('规则卡写清默认是亲手按', /默认[^。]*亲手按/.test(h), '')
-      ok('规则卡把 icey_play 定成例外，并给了三种可用场合',
-        /例外/.test(h) && /托管/.test(h) && /30 ?分钟|清一波小怪|赶路/.test(h), '')
+      ok('规则卡写清分工：平时你按、战斗插件为主',
+        /平时（探路|你控制|你按）/.test(h) && /战斗：插件为主/.test(h), '')
+      ok('规则卡写清战斗里模型管战术（打不打/先打谁/处决/脱离）',
+        /战术层/.test(h) && /处决/.test(h) && /脱离/.test(h), '')
+      ok('规则卡给了两种托管上限（非战斗 60 / 战斗 120）',
+        /PLAY_MAX_SECONDS/.test(h) && /PLAY_MAX_SECONDS_FIGHT/.test(h), '')
       ok('规则卡提醒「命令发出去 ≠ 键进了游戏」', /0\.00%/.test(h) || /键真的进/.test(h), '')
-      ok('digest 也写了默认自己按', /自己按/.test(PLAYBOOK.digest) && /sequence|icey_act/.test(PLAYBOOK.digest), '')
+      ok('digest 也写了分场景分工', /平时你按/.test(PLAYBOOK.digest) && /战斗交给插件/.test(PLAYBOOK.digest), '')
       const txt = playbookText()
       ok('规则卡渲染出了这一节', /谁的手在键盘上/.test(txt), '')
       const fsSync = await import('node:fs')
       const agentSrc = fsSync.readFileSync(new URL('./agent.js', import.meta.url), 'utf8')
-      ok('icey_play 的工具描述里写明「默认不是首选」',
-        /默认不是首选/.test(agentSrc), '')
-      ok('icey_act 的工具描述里写明「这是默认操控方式」',
-        /这是默认操控方式/.test(agentSrc), '')
+      ok('icey_play 的工具描述里写明「战斗时这是首选」',
+        /战斗时这是首选/.test(agentSrc), '')
+      ok('icey_act 的工具描述里写明「平时用这个」',
+        /平时用这个/.test(agentSrc), '')
     }
     // ㊱ 在场哨兵：**模型不参与时，插件也不许操作**（2026-10-27 用户追加的规矩）
     //    为什么必须有代码而不是只写规则：2026-10-27 19:20 模型为了省调用，
     //    把 90 秒整段丢给 icey_play，自己只发了 7 秒动作 —— 规则写得再清楚也被绕过。
     {
       const fsSync = await import('node:fs')
-      const { PRESENCE_TIMEOUT_MS, PLAY_MAX_SECONDS, PLAY_COOLDOWN_MS } = await import('./lib/game.mjs')
+      const { PRESENCE_TIMEOUT_MS, PLAY_MAX_SECONDS, PLAY_MAX_SECONDS_FIGHT, PLAY_COOLDOWN_MS } = await import('./lib/game.mjs')
       ok('导出在场哨兵常量', Number.isFinite(PRESENCE_TIMEOUT_MS) && PRESENCE_TIMEOUT_MS > 0,
         String(PRESENCE_TIMEOUT_MS))
       ok('在场超时量级合理（30 秒~5 分钟）',
         PRESENCE_TIMEOUT_MS >= 30_000 && PRESENCE_TIMEOUT_MS <= 300_000, String(PRESENCE_TIMEOUT_MS))
       ok('单段托管硬上限 ≤60 秒', PLAY_MAX_SECONDS > 0 && PLAY_MAX_SECONDS <= 60, String(PLAY_MAX_SECONDS))
+      ok('战斗段上限更宽（>60 且 ≤180）',
+        PLAY_MAX_SECONDS_FIGHT > PLAY_MAX_SECONDS && PLAY_MAX_SECONDS_FIGHT <= 180, String(PLAY_MAX_SECONDS_FIGHT))
+      const gameSrc0 = fsSync.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
+      ok('play() 按 preset=fight 放开上限', /wantFight/.test(gameSrc0) && /PLAY_MAX_SECONDS_FIGHT/.test(gameSrc0), '')
       ok('两段之间要留间隔（≥5 秒）', PLAY_COOLDOWN_MS >= 5_000, String(PLAY_COOLDOWN_MS))
       const gameSrc = fsSync.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
       ok('play() 里真的检查了模型是否在场', /modelTouchedAt/.test(gameSrc) && /PRESENCE_TIMEOUT_MS/.test(gameSrc), '')
