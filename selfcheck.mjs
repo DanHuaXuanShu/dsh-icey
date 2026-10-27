@@ -1135,6 +1135,30 @@ console.log('\n[6] 自主连玩策略')
       ok('icey_act 的工具描述里写明「这是默认操控方式」',
         /这是默认操控方式/.test(agentSrc), '')
     }
+    // ㊱ 在场哨兵：**模型不参与时，插件也不许操作**（2026-10-27 用户追加的规矩）
+    //    为什么必须有代码而不是只写规则：2026-10-27 19:20 模型为了省调用，
+    //    把 90 秒整段丢给 icey_play，自己只发了 7 秒动作 —— 规则写得再清楚也被绕过。
+    {
+      const fsSync = await import('node:fs')
+      const { PRESENCE_TIMEOUT_MS, PLAY_MAX_SECONDS, PLAY_COOLDOWN_MS } = await import('./lib/game.mjs')
+      ok('导出在场哨兵常量', Number.isFinite(PRESENCE_TIMEOUT_MS) && PRESENCE_TIMEOUT_MS > 0,
+        String(PRESENCE_TIMEOUT_MS))
+      ok('在场超时量级合理（30 秒~5 分钟）',
+        PRESENCE_TIMEOUT_MS >= 30_000 && PRESENCE_TIMEOUT_MS <= 300_000, String(PRESENCE_TIMEOUT_MS))
+      ok('单段托管硬上限 ≤60 秒', PLAY_MAX_SECONDS > 0 && PLAY_MAX_SECONDS <= 60, String(PLAY_MAX_SECONDS))
+      ok('两段之间要留间隔（≥5 秒）', PLAY_COOLDOWN_MS >= 5_000, String(PLAY_COOLDOWN_MS))
+      const gameSrc = fsSync.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
+      ok('play() 里真的检查了模型是否在场', /modelTouchedAt/.test(gameSrc) && /PRESENCE_TIMEOUT_MS/.test(gameSrc), '')
+      ok('act() 会刷新在场计时器', /async act\(input[^)]*\)\s*\{[\s\S]{0,200}modelTouchedAt = Date\.now\(\)/.test(gameSrc), '')
+      ok('look() 也会刷新在场计时器', /async look\(opts[^)]*\)\s*\{[\s\S]{0,200}modelTouchedAt = Date\.now\(\)/.test(gameSrc), '')
+      ok('上一段结束时间被记下来（cooldown 用）', /lastPlayEndedAt = Date\.now\(\)/.test(gameSrc), '')
+      const agentSrc2 = fsSync.readFileSync(new URL('./agent.js', import.meta.url), 'utf8')
+      ok('icey_play 描述里写明硬闸', /你不在场，插件不许自己动/.test(agentSrc2), '')
+      const { PLAYBOOK } = await import('./lib/playbook.mjs')
+      const h2 = (PLAYBOOK.hands || []).join('\n')
+      ok('规则卡写明「你不参与时插件也不许操作」', /你不参与时/.test(h2) && /不许操作/.test(h2), '')
+      ok('digest 也写了在场才动手', /你在场才动手/.test(PLAYBOOK.digest), '')
+    }
     // ⑪ 字幕「行」检测：细笔画白字算，成片亮块不算。
     //    2026-10-26 两轮实机各裁到一张空字幕图（框里只有草和脚）——旧判据只看亮像素占比。
     {
