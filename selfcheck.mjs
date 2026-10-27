@@ -651,7 +651,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO, FIGHT_MOTION, FIGHT_ACTIVE_RATIO } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO, FIGHT_MOTION, FIGHT_ACTIVE_RATIO, HUD_GONE_READING, HUD_GONE_FRAMES } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -840,6 +840,55 @@ console.log('\n[6] 自主连玩策略')
   const hasHud = p7.decide({ motion: 0.02, hudKick: 0, hudBright: 0.08 }, { now: 0 })
   ok('检测到 HUD 时不会乱按确认键', hasHud.action !== 'interact', JSON.stringify(hasHud))
   ok('PRESENCE_BRIGHT 是合理小值', PRESENCE_BRIGHT > 0 && PRESENCE_BRIGHT < 0.05, String(PRESENCE_BRIGHT))
+
+  // ⑬b 整屏界面：血条/护盾/连击都不在画面里 ⇒ 停手，不挥刀（2026-10-27 加）
+  //
+  // 来由：元叙事控制台（暗红棕整屏终端）实测 hudBright 6~7%，过了 PRESENCE_BRIGHT，
+  //   于是被当成游戏画面 —— 接着在战斗分支里「HUD 没读到血量/护盾 → 沿用上一档 → 出招」，
+  //   对着一个没有任何操作对象的界面连挥十几秒刀。主菜单大概是同一个洞。
+  //   见 HANDOFF「十二·补」。
+  const pHudGone = createPolicy('advance')
+  const hudGoneActions = []
+  for (let i = 0; i < 5; i++) {
+    hudGoneActions.push(
+      pHudGone.decide({ motion: 0.01, hudKick: 0, hudBright: 0.06, hp: 0, shield: 0, combo: 0 }, { now: i * 300 }).action,
+    )
+  }
+  // 前 HUD_GONE_FRAMES-1 帧是「确认期」，允许照常动作（宁可多动两下，
+  // 也不要在真战斗里因为一帧遮挡就停手）；确认之后必须停手，不许再挥刀。
+  ok('血盾连击都不在画面里时，确认之后停手（不再挥刀）',
+    hudGoneActions.slice(HUD_GONE_FRAMES - 1).every((a) => a === 'wait'), hudGoneActions.join(','))
+  ok('HUD_GONE_READING 比满血读数低一个量级',
+    HUD_GONE_READING > 0 && HUD_GONE_READING < 0.02, String(HUD_GONE_READING))
+
+  // 只读不到一两帧 ⇒ 不下结论（战斗里血条可能被刀光/特效整块遮住）
+  const pBlip = createPolicy('advance')
+  const blip = []
+  for (let i = 0; i < HUD_GONE_FRAMES - 1; i++) {
+    const d = pBlip.decide({ motion: 0.01, hudKick: 0, hudBright: 0.06, hp: 0, shield: 0, combo: 0 }, { now: i * 300 })
+    blip.push(/整屏界面/.test(d.why ?? '') ? 'wait(整屏)' : d.action)
+  }
+  ok(`血盾读不到不足 ${HUD_GONE_FRAMES} 帧时不判整屏界面`,
+    !blip.some((a) => a.startsWith('wait(整屏)')), blip.join(','))
+
+  // 血条还有读数（哪怕很少）⇒ 不是整屏界面
+  const pLow = createPolicy('advance')
+  const lowD = pLow.decide({ motion: 0.01, hudKick: 0, hudBright: 0.06, hp: 0.06, shield: 0, combo: 0 }, { now: 0 })
+  ok('血条还有读数时不判整屏界面', !/整屏界面/.test(lowD.why ?? ''), JSON.stringify(lowD))
+
+  // 连击数在涨（真在打）⇒ 即使血盾读数这一帧丢了也不停手
+  const pFightGone = createPolicy('fight')
+  let fightStop = false
+  for (let i = 0; i < 6; i++) {
+    const d = pFightGone.decide({ motion: 0.04, hudKick: 0, hudBright: 0.06, hp: 0, shield: 0, combo: 0.02 }, { now: i * 300 })
+    if (/整屏界面/.test(d.why ?? '')) fightStop = true
+  }
+  ok('连击数在涨时不判整屏界面', !fightStop, '在战斗中停手了')
+
+  // 没给 hp/shield 字段（手搓指标的老调用方）⇒ 「不知道」不是「读数是 0」
+  const pNoField = createPolicy('advance')
+  const nf = pNoField.decide({ motion: 0.03, hudKick: 0, hudBright: 0.08, progress: 0.6 }, { now: 0 })
+  ok('没给 hp/shield 字段时不判整屏界面', !/整屏界面/.test(nf.why ?? ''), JSON.stringify(nf))
 
   // ⑭ hudBright 真的能从画面算出来（HUD 区域涂亮 → 占比升高）
   const withBar = mk(W, H, 20)
