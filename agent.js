@@ -75,13 +75,27 @@ function describeStatus(st) {
   if (st.minimized) bits.push('已最小化')
   if (st.backend && !st.backend.koffiOk) bits.push('⚠️ koffi 不可用 ⇒ 只能看不能动')
   const canAct = st.health?.playable
-  return [
+  const lines = [
     `接上了：${bits.join('，')}。`,
     canAct
       ? '可以操作（按键会先把游戏抢到前台，会打断你正在做的事）。'
       : `现在不能操作：${st.health?.reason || '原因未知'}`,
     st.queue ? `动作队列：${st.queue.depth} 个在等，已完成 ${st.queue.done}。` : '',
-  ].filter(Boolean).join('\n')
+  ].filter(Boolean)
+  // 后台战斗的运行态 + 上一场的结局（2026-10-27 加）。
+  // 后台模式下模型拿不到同步返回值，停手原因只能从这里读 —— 不给它，模型就没法复盘。
+  const bg = st.background
+  if (bg?.running) {
+    lines.push(`⚔️ 后台战斗进行中：已 ${Math.round((bg.elapsedMs || 0) / 1000)} 秒 / 上限 ${bg.maxSeconds} 秒，`
+      + `focus=${bg.order.focus} style=${bg.order.style}${bg.abortRequested ? '（已请求停手，下一步停）' : ''}。`)
+    if (bg.orderError) lines.push(`  ⚠️ 微调参数被拒：${bg.orderError}`)
+    if (bg.lastEvents?.length) lines.push(`  最近：${bg.lastEvents.join(' / ')}`)
+  } else if (bg?.last) {
+    const l = bg.last
+    lines.push(`上一场后台战斗：${l.seconds} 秒，停因「${l.stopped || '未知'}」，`
+      + `动作 ${Object.values(l.actions || {}).reduce((a, b) => a + b, 0)} 次。`)
+  }
+  return lines.join('\n')
 }
 
 /**
@@ -259,6 +273,16 @@ export function apply(ctx) {
           : `现在不能操作：${st.health?.reason || '原因未知'}`,
         '想看「现在能按什么键」可以再来一次 icey_look({crop:"prompt"})。',
       ]
+      // 后台战斗时把运行态一起带上：这一帧就是「战斗中」的画面，
+      // 模型据此决定要不要微调（不看这条，它会以为自己看到的是静止画面）。
+      if (st.background?.running) {
+        const bg = st.background
+        lines.push(`⚠️ 后台战斗正在打（已 ${Math.round((bg.elapsedMs || 0) / 1000)} 秒 / 上限 ${bg.maxSeconds} 秒，`
+          + `focus=${bg.order.focus} style=${bg.order.style}）。`)
+        lines.push('  微调：icey_play({focus:"left"|"right", style:"aggressive"|"steady"|"cautious"})；'
+          + '停手：icey_play({stop:true})。手工 icey_act 这时会被拒（会抢键）。')
+        if (bg.lastEvents?.length) lines.push(`  最近：${bg.lastEvents.join(' / ')}`)
+      }
       return { text: lines.join('\n'), image: ref }
     },
   })
@@ -489,12 +513,19 @@ export function apply(ctx) {
   tool({
     name: 'icey_play',
     description:
-      '🔴 **战斗时这是首选**（2026-10-24 定的分工，2026-10-27 再次确认）：平时（探路/交互/过剧情）由你亲手按 `icey_act`，'
-      + '**战斗交给本工具**（`preset="fight"`），因为你一次工具往返 6~12 秒，插件一次决策 0.7 秒 —— 反射层面必然慢半拍。'
-      + '战斗里你的活是战术层：打不打这一波、先打谁、何时处决、血线不对是换位还是硬顶、要不要脱离。'
-      + '🔴 **2026-10-27 加硬闸（代码里真的会拦）**：① 你超过 90 秒没 icey_act/icey_look，本工具直接拒绝启动；'
-      + '② 单段硬上限：非战斗 60 秒、`preset="fight"` 120 秒；③ 上一段结束后 10 秒内不许再来一段 —— 那 10 秒只能由你亲手看画面/做动作。'
-      + '一句话：**你不在场，插件不许自己动。**\n'
+      '🔴 **战斗默认这样用：`background:true` 开一次，之后一边看一边调**（2026-10-27 改）。\n'
+      + '平时（探路/交互/过剧情）由你亲手按 `icey_act`；战斗交给本工具，因为插件一次决策约 0.7 秒，'
+      + '你一次工具往返 6~12 秒 —— 反射层面你必然慢半拍。\n'
+      + '**战斗的标准循环**：`icey_play({preset:"fight", background:true, seconds:90})` → 立即返回，它自己打 → '
+      + '你随时 `icey_look` 看一眼 → 要调就发一条 `icey_play({focus:"left"})` / `({style:"cautious"})`'
+      + '（约 0.7 秒生效，**不重启、不丢战斗进度**）→ `icey_play({stop:true})` 收手。\n'
+      + '不带 `background` 的同步模式仍然可用（阻塞到跑完才返回），但它跑的时候你发不出别的工具 —— '
+      + '只有「一次跑完、中间不想管」时才用它。\n'
+      + '🔴 **硬闸（代码里真的会拦）**：① 你 90 秒没 act/look/play，后台战斗自动停手；'
+      + '② 单段上限：非战斗 60 秒、`preset="fight"` 120 秒；③ 停手后重新开打要隔 10 秒；'
+      + '④ 它跑的时候手工 `icey_act` 会被拒（会抢键），改走微调或停手。\n'
+      + '**你负责战术层**：打不打、先打哪边（focus）、打多凶（style）、什么时候停手。'
+      + '⚠️ 这里没有「撤退」选项 —— 2026-10-26 用户明确说过不要撤，血低只降攻击欲望。\n'
       + '默认手感是：icey_look 看一眼 → icey_act(sequence=[...]) 亲手打十几秒 → 再看一眼。'
       + '只有用户明确说「托管」「你自己跑一会儿」「玩 30 分钟别管我」，或者只是想清一波小怪时，才用这个。\n'
       + '**自己连着玩一段**，中途不用再问任何人。一次调用跑完一整段：自动决定走位/攻击/过对话，'
@@ -522,6 +553,26 @@ export function apply(ctx) {
         description: 'true = 不带截图，只回结构化事件摘要 + 指标（省 token，适合「先跑一段看看情况」）。'
           + '默认 false 带图。⚠️ 不带图就看不到画面细节，判不准的时候还是得开图看一眼。',
       },
+      background: {
+        type: 'boolean',
+        description: 'true = 后台开打：启动后立刻返回，战斗在插件里继续跑，你随后可以一边 icey_look 一边微调。'
+          + '战斗推荐用它（默认的同步模式会一直占着这次调用，期间你发不出别的工具）。',
+      },
+      stop: {
+        type: 'boolean',
+        description: 'true = 叫停正在跑的后台战斗（下一步约 1 秒内停，会松键并把画面交回）。',
+      },
+      focus: {
+        type: 'string',
+        enum: ['auto', 'left', 'right'],
+        description: '先朝哪边打。auto = 插件自己索敌（黄箭头 / 处决提示）；指定后压过自动索敌。',
+      },
+      style: {
+        type: 'string',
+        enum: ['auto', 'aggressive', 'steady', 'cautious'],
+        description: '战斗欲望档。auto = 按血盾自动分三档；aggressive/steady/cautious 锁死档位。'
+          + '注意：这里没有「撤退」——血低只降欲望，2026-10-26 用户明确说过不要撤。',
+      },
     },
     output: imageOutput,
     async execute(args) {
@@ -531,6 +582,85 @@ export function apply(ctx) {
       if (!st.running) {
         return { text: `没接上游戏，没法连玩。${st.health?.reason || ''}\n下一步：icey_start。`, image: null }
       }
+
+      // ===== 三种调用形态（2026-10-27 加）=====
+      //  ① 战斗进行中再调一次 → 「微调」：只改战术参数，不重启、不丢遥测
+      //  ② stop:true → 叫停
+      //  ③ background:true → 后台开打，立刻返回；模型随后可以一边看画面一边调
+      //  ④ 都不带 → 旧的同步模式（阻塞到跑完）
+      const bg = s.bgSnapshot()
+      if (args.stop === true) {
+        const r = s.requestStop()
+        return {
+          text: r.ok
+            ? '已请求停手：插件下一步（约 1 秒内）停，会松键、把画面交回。\n随后 icey_status / 下一次 icey_play 能看到这一段是为什么停的。'
+            : `停不了：${r.error}`,
+          image: null,
+        }
+      }
+      if (bg.running) {
+        // 战斗正在跑：这次调用只当微调用，绝不重启（重启会丢连击窗口和血量基线）
+        const patch = {}
+        if (args.focus !== undefined) patch.focus = args.focus
+        if (args.style !== undefined) patch.style = args.style
+        const ranSec = Math.round((bg.elapsedMs || 0) / 1000)
+        if (!Object.keys(patch).length) {
+          return {
+            text: `后台战斗还在跑（已 ${ranSec} 秒 / 上限 ${bg.maxSeconds} 秒），这次调用没带 focus / style，什么都没改。\n`
+              + `当前战术：focus=${bg.order.focus} style=${bg.order.style}${bg.orderError ? `（参数有误：${bg.orderError}）` : ''}\n`
+              + '要调就带 focus / style；要停就 stop:true；只看画面用 icey_look。',
+            image: null,
+          }
+        }
+        const r = s.setOrder(patch)
+        if (!r.ok) return { text: `微调没生效：${r.error}`, image: null }
+        return {
+          text: `已调整：focus=${r.order.focus} style=${r.order.style}（下一步决策就生效，约 0.7 秒）\n`
+            + `后台战斗已跑 ${ranSec} 秒 / 上限 ${bg.maxSeconds} 秒。`,
+          image: null,
+        }
+      }
+
+      if (args.background === true) {
+        // 先抓一帧再开打：这时循环还没起来，抓帧不会跟它抢窗口。
+        let shot = null
+        try {
+          const frame = await s.look({ maxWidth: 720 })
+          const [ref] = await ctx.attachments.saveImages([{ data: frame.png, mediaType: 'image/png', name: 'icey-fight-start' }])
+          shot = ref
+        } catch { /* 抓不到不耽误开打 */ }
+        // 关键：不 await。让循环在插件里自己跑，工具立刻返回 ——
+        // 这才是「插件一直在打、模型随时能看」成立的前提（工具调用是串行的，
+        // 一旦 await，模型在这几十秒里就发不出 icey_look）。
+        const p = s.play({
+          seconds: args.seconds,
+          preset: args.preset,
+          captureEvery: args.captureEvery,
+          maxFrames: 0,          // 后台模式不需要途中截图（模型自己会 look）
+          dir: args.dir,
+          historyLen: 0,
+          background: true,
+          order: { focus: args.focus, style: args.style },
+        })
+        // 这个 promise 没人 await，必须自己接住，否则会变成 unhandledRejection 把宿主吓一跳
+        p.catch((e) => { try { s.log?.(`[icey] 后台战斗异常：${e?.message || e}`) } catch { /* 忽略 */ } })
+        // 用 1.5 秒竞速区分「已经开打」和「被拒了」：
+        // play() 正常要跑几十秒才 resolve，这么短时间内 resolve 只可能是拒绝或立刻出错。
+        const early = await Promise.race([p, new Promise((r) => setTimeout(() => r('RUNNING'), 1500))])
+        if (early !== 'RUNNING') {
+          return { text: `后台战斗没开起来：${early?.error || '未知原因'}`, image: shot }
+        }
+        return {
+          text: `后台战斗已开始（${args.preset || 'advance'}，上限 ${args.preset === 'fight' ? 120 : 60} 秒）。\n`
+            + '它现在自己在打 —— 你可以做三件事：\n'
+            + '  · icey_look 看一眼画面（战斗中随时可看）\n'
+            + '  · icey_play({focus:"left"|"right", style:"aggressive"|"steady"|"cautious"}) 微调，约 0.7 秒生效\n'
+            + '  · icey_play({stop:true}) 叫停\n'
+            + '⚠️ 它在跑的时候手工 icey_act 会被拒绝（会抢键）。你 90 秒不参与它会自己停。',
+          image: shot,
+        }
+      }
+
       const res = await s.play({
         seconds: args.seconds,
         preset: args.preset,

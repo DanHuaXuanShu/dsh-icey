@@ -1123,18 +1123,18 @@ console.log('\n[6] 自主连玩策略')
       const h = (PLAYBOOK.hands || []).join('\n')
       ok('规则卡写清分工：平时你按、战斗插件为主',
         /平时（探路|你控制|你按）/.test(h) && /战斗：插件为主/.test(h), '')
-      ok('规则卡写清战斗里模型管战术（打不打/先打谁/处决/脱离）',
-        /战术层/.test(h) && /处决/.test(h) && /脱离/.test(h), '')
+      ok('规则卡写清战斗里模型拧哪两个旋钮（focus / style）',
+        /focus/.test(h) && /style/.test(h) && /微调/.test(h), '')
       ok('规则卡给了两种托管上限（非战斗 60 / 战斗 120）',
         /PLAY_MAX_SECONDS/.test(h) && /PLAY_MAX_SECONDS_FIGHT/.test(h), '')
       ok('规则卡提醒「命令发出去 ≠ 键进了游戏」', /0\.00%/.test(h) || /键真的进/.test(h), '')
-      ok('digest 也写了分场景分工', /平时你按/.test(PLAYBOOK.digest) && /战斗交给插件/.test(PLAYBOOK.digest), '')
+      ok('digest 也写了分场景分工', /平时你按/.test(PLAYBOOK.digest) && /background:true/.test(PLAYBOOK.digest), '')
       const txt = playbookText()
       ok('规则卡渲染出了这一节', /谁的手在键盘上/.test(txt), '')
       const fsSync = await import('node:fs')
       const agentSrc = fsSync.readFileSync(new URL('./agent.js', import.meta.url), 'utf8')
-      ok('icey_play 的工具描述里写明「战斗时这是首选」',
-        /战斗时这是首选/.test(agentSrc), '')
+      ok('icey_play 的工具描述里写明「战斗默认这样用」',
+        /战斗默认这样用/.test(agentSrc), '')
       ok('icey_act 的工具描述里写明「平时用这个」',
         /平时用这个/.test(agentSrc), '')
     }
@@ -1160,7 +1160,7 @@ console.log('\n[6] 自主连玩策略')
       ok('look() 也会刷新在场计时器', /async look\(opts[^)]*\)\s*\{[\s\S]{0,200}modelTouchedAt = Date\.now\(\)/.test(gameSrc), '')
       ok('上一段结束时间被记下来（cooldown 用）', /lastPlayEndedAt = Date\.now\(\)/.test(gameSrc), '')
       const agentSrc2 = fsSync.readFileSync(new URL('./agent.js', import.meta.url), 'utf8')
-      ok('icey_play 描述里写明硬闸', /你不在场，插件不许自己动/.test(agentSrc2), '')
+      ok('icey_play 描述里写明后台战斗的硬闸', /后台战斗自动停手/.test(agentSrc2), '')
       const { PLAYBOOK } = await import('./lib/playbook.mjs')
       const h2 = (PLAYBOOK.hands || []).join('\n')
       ok('规则卡写明「你不参与时插件也不许操作」', /你不参与时/.test(h2) && /不许操作/.test(h2), '')
@@ -1637,6 +1637,49 @@ console.log('\n[6] 自主连玩策略')
   const imeBook = fsSync.readFileSync(new URL('./lib/playbook.mjs', import.meta.url), 'utf8')
   ok('规则卡写了输入法这条坑', /先怀疑输入法/.test(imeBook), 'playbook hands 没写')
   ok('digest 也提了输入法', /输入法在中文模式/.test(imeBook), 'digest 没提')
+
+  // ㉕ 后台战斗（2026-10-27）：目标是「它一直在打，我随时看一眼、拧一下」。
+  //    三个实现支点是：工具层不 await、循环每步同步微调参数、停手/在场检查每步都查。
+  const autoSrc = fsSync.readFileSync(new URL('./lib/autoplay.mjs', import.meta.url), 'utf8')
+  ok('策略层导出 DEFAULT_ORDER', /export const DEFAULT_ORDER/.test(autoSrc), '')
+  ok('策略层导出 normalizeOrder', /export function normalizeOrder/.test(autoSrc), '')
+  ok('微调字段白名单只有 focus / style', /只认 focus \/ style/.test(autoSrc), '')
+  ok('策略对象支持热更新参数', /setOrder\(patch = \{\}\) \{/.test(autoSrc), '')
+
+  const autoMod = await import('./lib/autoplay.mjs')
+  const polBg = autoMod.createPolicy('fight')
+  ok('新策略默认 focus/style 都是 auto',
+    polBg.order.focus === 'auto' && polBg.order.style === 'auto', JSON.stringify(polBg.order))
+  ok('设 focus=left 立刻生效',
+    polBg.setOrder({ focus: 'left' }).ok && polBg.order.focus === 'left', JSON.stringify(polBg.order))
+  ok('非法 style 被拒', polBg.setOrder({ style: 'nope' }).ok === false, '')
+  ok('未知字段被拒（不静默忽略）', polBg.setOrder({ foo: 1 }).ok === false, '')
+  ok('normalizeOrder 是合并不是覆盖',
+    autoMod.normalizeOrder({ style: 'steady' }, { focus: 'right', style: 'auto' }).order.focus === 'right', '')
+
+  const bgGame = fsSync.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
+  ok('play 认 background 选项', /const background = opts\.background === true/.test(bgGame), '')
+  ok('循环每步把微调参数同步给策略', /policy\.setOrder\(this\.bg\.order\)/.test(bgGame), '')
+  ok('循环每步检查停手请求', /if \(this\.bg\.abortRequested\)/.test(bgGame), '')
+  ok('后台战斗也守在场哨兵', /在场哨兵：模型已经/.test(bgGame) && /后台战斗自动停手/.test(bgGame), '')
+  ok('有 setOrder 控制口', /^  setOrder\(patch = \{\}\) \{/m.test(bgGame), '')
+  ok('有 requestStop 控制口', /^  requestStop\(\) \{/m.test(bgGame), '')
+  ok('有 bgSnapshot 运行快照', /^  bgSnapshot\(\) \{/m.test(bgGame), '')
+  ok('后台战斗时手工 act 被拒', /backgroundRunning: true/.test(bgGame), '')
+  ok('status 带 background 字段', /background: this\.bgSnapshot\(\)/.test(bgGame), '')
+  ok('dispose 会叫停后台战斗', /if \(this\.bg\) this\.bg\.abortRequested = true/.test(bgGame), '')
+
+  const bgAgent = fsSync.readFileSync(new URL('./agent.js', import.meta.url), 'utf8')
+  ok('工具层后台模式不 await（await 了模型就发不出 look）',
+    /const p = s\.play\(\{/.test(bgAgent) && !/const p = await s\.play\(/.test(bgAgent), '')
+  ok('工具层接住后台 promise 的失败（免得 unhandledRejection）', /p\.catch\(/.test(bgAgent), '')
+  ok('icey_play 有 stop 参数', /stop: \{/.test(bgAgent), '')
+  ok('icey_play 有 focus / style 参数', /focus: \{/.test(bgAgent) && /style: \{/.test(bgAgent), '')
+  ok('icey_look 会显示后台战斗态', /后台战斗正在打/.test(bgAgent), '')
+  ok('describeStatus 会显示后台战斗', /后台战斗进行中/.test(bgAgent), '')
+  const bgBook = fsSync.readFileSync(new URL('./lib/playbook.mjs', import.meta.url), 'utf8')
+  ok('规则卡写了「开一次就撒手」', /就撒手/.test(bgBook), '')
+  ok('规则卡写明没有「撤退」选项', /没有「撤退」这个选项/.test(bgBook), '')
 }
 
 /* ---------- 汇总 ---------- */
