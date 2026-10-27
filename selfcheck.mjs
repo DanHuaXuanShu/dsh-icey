@@ -1617,6 +1617,26 @@ console.log('\n[6] 自主连玩策略')
   ok('没有 HUD 时只按确认/等待，不进入脱困动作', !stuckWhileBooting, '出现了脱困动作')
   ok('没有 HUD 时 stillStreak 不累积', p14.stillStreak === 0, String(p14.stillStreak))
   ok('启动阶段的确认键上限比游戏中宽', MAX_BOOT_INTERACTS > MAX_INTERACTS, `${MAX_BOOT_INTERACTS} vs ${MAX_INTERACTS}`)
+
+  // ㉔ 输入法：中文模式下字母键和方向键会被输入法截给候选框，只剩 esc/enter 能进游戏。
+  //    2026-10-27 实机踩到 —— 表现是「能开暂停菜单但完全不能移动」，看着像游戏锁了移动。
+  //    修法：接上游戏时把该窗口线程的键盘布局切到英文。
+  const imeBackend = fsSync.readFileSync(new URL('./lib/win-backend.mjs', import.meta.url), 'utf8')
+  ok('后端有切英文布局的实现', /function ensureEnglishInput\(hwnd\)/.test(imeBackend), '缺 ensureEnglishInput')
+  ok('后端注册了 englishinput 命令', /englishinput:\s*\(/.test(imeBackend), '缺 HANDLERS.englishinput')
+  ok('切布局用 KLF_ACTIVATE 加载 00000409', /LoadKeyboardLayoutW\('00000409', 1\)/.test(imeBackend), '加载参数不对')
+  ok('已经是英文时就短路', /before === 0x0409/.test(imeBackend), '缺短路')
+  const imeHost = fsSync.readFileSync(new URL('./lib/host.mjs', import.meta.url), 'utf8')
+  ok('后端客户端暴露 ensureEnglishInput', /async ensureEnglishInput\(hwnd\)/.test(imeHost), '缺客户端方法')
+  const imeGame = fsSync.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
+  ok('接上游戏时会自动切英文', /await this\.wantEnglishInput\(\)/.test(imeGame), 'attach 里没调')
+  ok('窗口变了会重新切英文', /if \(changed\) await this\.wantEnglishInput\(\)/.test(imeGame), 'ensureAttached 里没调')
+  ok('attach 返回值里带 inputlang', /health: this\.health, inputlang/.test(imeGame), '返回值没带 inputlang')
+  const imeAgent = fsSync.readFileSync(new URL('./agent.js', import.meta.url), 'utf8')
+  ok('icey_start 的描述提到了输入法', /输入法/.test(imeAgent), '描述没提')
+  const imeBook = fsSync.readFileSync(new URL('./lib/playbook.mjs', import.meta.url), 'utf8')
+  ok('规则卡写了输入法这条坑', /先怀疑输入法/.test(imeBook), 'playbook hands 没写')
+  ok('digest 也提了输入法', /输入法在中文模式/.test(imeBook), 'digest 没提')
 }
 
 /* ---------- 汇总 ---------- */

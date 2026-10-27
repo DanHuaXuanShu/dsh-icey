@@ -143,6 +143,7 @@ export function apply(ctx) {
       '打开/接上《艾希 ICEY》，然后告诉你能不能操作、画面是什么样。\n'
       + '这是玩游戏的第一步，之后用 icey_look 看画面、icey_act 操作。\n'
       + 'launchMode：attach（默认，接上已经开着的窗口，最稳）/ steam（让 Steam 启动）/ direct（直接跑 exe）。\n'
+      + '接上时会自动把游戏线程切到英文键盘布局 —— 中文输入法在中文模式下会把字母键和方向键截给候选框，只剩 esc/enter 能进游戏（表现是「能开暂停菜单但走不动」）。切换结果在返回的 inputlang 里。\n'
       + '返回：接上没接上、窗口信息、能不能操作（不能的话原因）、首帧截图。',
     parameters: {
       launchMode: {
