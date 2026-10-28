@@ -270,9 +270,11 @@ export function apply(ctx) {
       if (wantCrop === 'prompt') {
         const cut = await s.lookCrop({ x0: 0.42, y0: 0.38, x1: 0.99, y1: 0.86 })
         const [ref] = await ctx.attachments.saveImages([{ data: cut.png, mediaType: 'image/png', name: 'icey-prompt' }])
+        const promptPct = (cut.promptScore * 100).toFixed(2)
         return {
-          text: `交互提示区 ${cut.width}x${cut.height}（原分辨率裁图，未缩放）。\n`
-            + '上面若有白字提示，直接读它决定按什么键；没有提示通常意味着这里不能互动。',
+          text: `交互提示区 ${cut.width}x${cut.height}（原分辨率裁图，未缩放）。白字占比 ${promptPct}%。\n`
+            + '上面若有白字提示，直接读它决定按什么键；没有提示通常意味着这里不能互动。\n'
+            + '⚠️ 提示框里那个键帽小图标一律是 Enter —— 不要辨认它的字形（2026-10-28 手动操作时把它看成了 J 和 ↑）。',
           image: ref,
         }
       }
@@ -517,6 +519,11 @@ export function apply(ctx) {
       const lines = [`任务「${args.task}」→ 按 ${preset} 执行`, summarizeRun(res)]
       if (res.eventDigest) {
         lines.push('途中事件：', ...res.eventDigest.split('\n').map((l) => `  ${l}`))
+      }
+      // 2026-10-28 补：icey_play 早就渲染了 safetyPaused，icey_auto 漏了 ——
+      // 于是用它停手的人不知道游戏被 Esc 暂停了，接着发 move 全被暂停菜单吃掉。
+      if (res.safetyPaused) {
+        lines.push('⚠️ 结束时还在战斗，我按了 Esc 把游戏暂停了（不暂停的话怪会继续打，真被打死过两次）。接手前先按一次 Esc 继续。')
       }
       return { text: lines.join('\n'), image: null }
     },

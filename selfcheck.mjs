@@ -1722,6 +1722,21 @@ console.log('\n[6] 自主连玩策略')
       ACTION_WEIGHTS.fight.dash === 2 && ACTION_WEIGHTS.fightCautious.dash === 3 && ACTION_WEIGHTS.fightDanger.dash === 3,
       `${ACTION_WEIGHTS.fight.dash}/${ACTION_WEIGHTS.fightCautious.dash}/${ACTION_WEIGHTS.fightDanger.dash}`)
   }
+
+  // ㉗ 「停手按了 Esc，但没人告诉我」（2026-10-28 从一轮实机复盘里查出来的）
+  //    真相不是「没记」—— icey_play 早就渲染了 safetyPaused，是 **icey_auto 漏了**。
+  //    于是用它停手的人接着发 move，全被暂停菜单吃掉（撞墙两次、白费半分钟）。
+  {
+    const fsA = fsSync.readFileSync(new URL('./agent.js', import.meta.url), 'utf8')
+    const iPlay = fsA.indexOf("name: 'icey_play'")
+    const iAuto = fsA.indexOf("name: 'icey_auto'")
+    const autoBody = fsA.slice(Math.min(iPlay, iAuto), Math.max(iPlay, iAuto))
+    ok('icey_auto 也渲染 safetyPaused（不再只有 icey_play 有）', /safetyPaused/.test(autoBody), '')
+    const pbSrc = fsSync.readFileSync(new URL('./lib/playbook.mjs', import.meta.url), 'utf8')
+    ok('规则卡记了「死亡界面要按两次 Enter」', /死亡界面要按两次/.test(pbSrc), '')
+    ok('规则卡里强化台键位以提示框为准（不写死空格/Enter）',
+      /以提示框写的键为准/.test(pbSrc) || /以提示框.*为准/.test(pbSrc), '')
+  }
 }
 
 /* ---------- 汇总 ---------- */
