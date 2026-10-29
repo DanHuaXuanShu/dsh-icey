@@ -1872,6 +1872,61 @@ console.log('\n[6] 自主连玩策略')
     // 不能抽搐：30 步（21 秒）里翻面次数要有上限
     const faceCount = stallActs.filter((a) => a.action === 'face').length
     ok('僵持 21 秒里翻面不超过 6 次（防止原地抽搐）', faceCount <= 6, 'face×' + faceCount)
+
+    // 战斗屏障（2026-10-29）—— 用户报的那个「她判定那里过不去」的真正原因
+    const { analyzeEnvironment: envBar } = await import('./lib/autoplay.mjs')
+    {
+      const dec = (await import('./lib/png-decode.mjs')).decodePng
+      const barCases = [
+        ['shots/ui-neg/barrier-174.png', true, '用户录像 2:54（右侧青色光幕）'],
+        ['probe/fixtures/station-fullframe.png', false, '普通探索画面'],
+        ['probe/fixtures/ui-negative-death.png', false, '死亡画面'],
+      ]
+      for (const [p, want, note] of barCases) {
+        if (!fsSync.existsSync(new URL(p, import.meta.url))) { ok(`屏障：${note}（样本缺失，跳过）`, true, p); continue }
+        const im = dec(fsSync.readFileSync(new URL(p, import.meta.url)))
+        const e = envBar(im.rgba, im.width, im.height)
+        ok(`屏障判据：${note} → ${want ? '认出' : '不误报'}`,
+          e.barrier === want, `barrier=${e.barrier} 青度=${e.barrierEdge}`)
+      }
+      // 分析时帧会被缩到 ~480 宽，3% 只有 14px —— 必须确认缩小后信号还在
+      const im0 = dec(fsSync.readFileSync(new URL('shots/ui-neg/barrier-174.png', import.meta.url)))
+      const W2 = 480, H2 = Math.round((im0.height * W2) / im0.width)
+      const small = new Uint8Array(W2 * H2 * 4)
+      for (let y = 0; y < H2; y++) for (let x = 0; x < W2; x++) {
+        const si = (Math.floor((y * im0.height) / H2) * im0.width + Math.floor((x * im0.width) / W2)) * 4
+        const di = (y * W2 + x) * 4
+        small[di] = im0.rgba[si]; small[di + 1] = im0.rgba[si + 1]
+        small[di + 2] = im0.rgba[si + 2]; small[di + 3] = 255
+      }
+      const eSmall = envBar(small, W2, H2)
+      ok('屏障缩到 480 宽后仍认得出来（分析时就是这么缩的）',
+        eSmall.barrier === true, `barrier=${eSmall.barrier} 青度=${eSmall.barrierEdge}`)
+    }
+    // 端到端：屏障亮着 + 连击区不亮 + 没刚掉血 ⇒ 必须算「在战斗」，不能判卡住
+    {
+      const srcGame = fsSync.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
+      ok('环境分析里的 barrier 真的被传给决策层（原来漏了这一行，那条判据从没生效）',
+        /metrics\.barrier\s*=\s*env\.barrier/.test(srcGame), '')
+      const pBar = mkUp('advance')
+      const acts2 = []
+      const whys2 = []
+      for (let i = 0; i < 12; i++) {
+        const d = pBar.decide({
+          motion: 0.008, hudKick: 0, hudBright: 0.08,
+          hp: 0.55, shield: 0.09, combo: 0, progress: 0.0,
+          barrier: true,
+        }, { now: i * 700 })
+        acts2.push(d.action)
+        whys2.push(d.why || '')
+      }
+      // 判「有没有走脱困阶梯」要看 why，不能看 action 名 —— dash/jump 在正常战斗里也用
+      ok('屏障亮着时不走脱困阶梯（屏障锁着场地，不是路走不通）',
+        !whys2.some((w) => /卡住|过不去|掉头|退一步/.test(w)),
+        acts2.join(','))
+      ok('屏障亮着时不会被判成「卡住」而去按确认键',
+        !acts2.includes('interact'), acts2.join(','))
+    }
     ok('规则卡里强化台键位以提示框为准（不写死空格/Enter）',
       /以提示框写的键为准/.test(pbSrc) || /以提示框.*为准/.test(pbSrc), '')
     // 2026-10-29：接上游戏时顺手给规则卡精华，新会话不用先单独调一次 icey_playbook
