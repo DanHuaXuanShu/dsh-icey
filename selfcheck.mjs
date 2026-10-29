@@ -1739,6 +1739,13 @@ console.log('\n[6] 自主连玩策略')
     // 2026-10-29：接上游戏时顺手给规则卡精华，新会话不用先单独调一次 icey_playbook
     ok('icey_start 会带上规则卡精华（省掉一次 playbook 往返）',
       /规则卡精华/.test(fsA) && /PLAYBOOK\.digest/.test(fsA), '')
+    // 2026-10-29 实测：**窗口不在前台时切布局无效**（切完还 0x804，方向键照旧被吞）。
+    // 所以切失败必须抢一次前台重切 —— 否则「自动切英文」只在理想条件下成立。
+    const gmSrc = fsSync.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
+    ok('切英文失败时会抢前台重试（不在前台时切不生效）',
+      /retriedAfterFocus/.test(gmSrc) && /backend\.focus\(this\.hwnd\)/.test(gmSrc), '')
+    ok('规则卡写明「自动切英文要求游戏在前台」',
+      /要求游戏窗口在前台|不在前台时自动切不生效/.test(pbSrc), '')
   }
 }
 
