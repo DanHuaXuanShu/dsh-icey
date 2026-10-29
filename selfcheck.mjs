@@ -565,7 +565,10 @@ console.log('\n[3] 控制映射')
       let others = []
       for (let i = 0; i < 60; i++) {
         const d = pol.decide(frame, { now: i * 690 })
-        if (d.action === 'combo') {
+        // 2026-10-29：只数**续连**。僵持阶梯第 2 档也会发 combo（换空中起手），
+        // 那是另一次独立决策、有自己的限流，混进来会把这条断言变成假警报。
+        const isChain = d.action === 'combo' && /续连/.test(d.why || '')
+        if (isChain) {
           streak++
           if (streak > maxStreak) maxStreak = streak
         } else {
@@ -1831,6 +1834,44 @@ console.log('\n[6] 自主连玩策略')
       upgradeMenu: false,
     }, { now: 0 })
     ok('不是升级界面时不会按 Esc', noUp.action !== 'menu', JSON.stringify(noUp))
+
+    // 战斗僵持三档（2026-10-29）：打不动要换打法，不是撤退、也不是原地耗到死
+    const { createPolicy: mkStall, FIGHT_STALL_MS: STALL_MS, FIGHT_STALL_COOLDOWN_MS: STALL_CD } =
+      await import('./lib/autoplay.mjs')
+    ok('僵持判据的时长比「连击停滞」长（先翻面试错，再换真打法）',
+      STALL_MS >= 3000 && STALL_MS <= 10000, 'STALL_MS=' + STALL_MS)
+    const runStall = (withFoe) => {
+      const p = mkStall('advance')
+      const out = []
+      for (let i = 0; i < 30; i++) {
+        const m = {
+          motion: 0.04, hudKick: 0, hudBright: 0.08,
+          hp: 0.6, shield: 0.09, combo: 0.02, progress: 0.5,
+        }
+        if (withFoe) m.enemyDir = 'left'
+        const d = p.decide(m, { now: i * 700 })
+        out.push({ t: i * 0.7, action: d.action, dir: d.dir, keys: d.keys, why: d.why || '' })
+      }
+      return out
+    }
+    const stallActs = runStall(false)
+    ok('僵持会触发「换站位」（dash），不是一直翻面',
+      stallActs.some((a) => a.action === 'dash' && /僵持第 1 档/.test(a.why)),
+      stallActs.filter((a) => a.action === 'dash').map((a) => a.t + 's').join(','))
+    ok('僵持第 2 档会换成空中起手（k 起手的连段）',
+      stallActs.some((a) => a.action === 'combo' && String(a.keys || '').startsWith('k|') && /僵持第 2 档/.test(a.why)),
+      stallActs.filter((a) => /僵持第 2 档/.test(a.why)).map((a) => a.keys).join(','))
+    ok('僵持第 3 档才翻面（位和招式都试过了）',
+      stallActs.some((a) => a.action === 'face' && /僵持第 3 档/.test(a.why)), '')
+    // 关键：用户 2026-10-27 定过「打不过也不脱战」。所以换位必须朝敌人，不能背离。
+    const stallFoe = runStall(true)
+    const dashes = stallFoe.filter((a) => a.action === 'dash' && /僵持第 1 档/.test(a.why))
+    ok('僵持换位是朝敌人方向冲（不是撤退）',
+      dashes.length > 0 && dashes.every((a) => a.dir === 'left'),
+      dashes.map((a) => a.dir).join(','))
+    // 不能抽搐：30 步（21 秒）里翻面次数要有上限
+    const faceCount = stallActs.filter((a) => a.action === 'face').length
+    ok('僵持 21 秒里翻面不超过 6 次（防止原地抽搐）', faceCount <= 6, 'face×' + faceCount)
     ok('规则卡里强化台键位以提示框为准（不写死空格/Enter）',
       /以提示框写的键为准/.test(pbSrc) || /以提示框.*为准/.test(pbSrc), '')
     // 2026-10-29：接上游戏时顺手给规则卡精华，新会话不用先单独调一次 icey_playbook
