@@ -1746,6 +1746,13 @@ console.log('\n[6] 自主连玩策略')
       /retriedAfterFocus/.test(gmSrc) && /backend\.focus\(this\.hwnd\)/.test(gmSrc), '')
     ok('规则卡写明「自动切英文要求游戏在前台」',
       /要求游戏窗口在前台|不在前台时自动切不生效/.test(pbSrc), '')
+    // 2026-10-29 实测：一整局没满过血 → 基线学到 0.321 → 19.6% 报成 60.8%、残血判健康。
+    const apSrc = fsSync.readFileSync(new URL('./lib/autoplay.mjs', import.meta.url), 'utf8')
+    ok('血基线有托底（没满过血也不会被学得太低）',
+      /const HP_BASELINE_FLOOR = [0-9.]+/.test(apSrc)
+      && /hpBaseline < HP_BASELINE_FLOOR\) hpBaseline = HP_BASELINE_FLOOR/.test(apSrc), '')
+    ok('连击区峰值/上涨次数有记录（分辨打中 vs 空挥）',
+      /comboPeak/.test(apSrc) && /comboGains/.test(apSrc), '')
   }
 }
 
