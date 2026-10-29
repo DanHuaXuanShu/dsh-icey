@@ -1789,6 +1789,48 @@ console.log('\n[6] 自主连玩策略')
       /notExecuteHeal/.test(deathGmSrc) && /execAt/.test(deathGmSrc), '')
     ok('回档事件文案写明「疑似」+「别当赚的/花的」（插件读不到钱，不能替玩家下结论）',
       /疑似死亡回档/.test(deathGmSrc) && /存档点的数/.test(deathGmSrc), '')
+
+    // 招式升级界面（2026-10-29 实测：它打开时血盾金钱都还在，所以「整屏界面」那条判据抓不到它）
+    const { analyzeFrame: afUp, createPolicy: mkUp } = await import('./lib/autoplay.mjs')
+    const { decodePng: decUp } = await import('./lib/png-decode.mjs')
+    const upCases = [
+      ['probe/fixtures/upgrade-menu.png', true, '强化界面（弥城死镇）'],
+      ['probe/fixtures/station-fullframe.png', false, '普通游戏画面'],
+      ['shots/watch/w0008.png', false, '暂停菜单'],
+      ['probe/fixtures/ui-negative-death.png', false, '死亡画面'],
+      ['shots/ui-neg/t1032.png', false, '地图列表'],
+    ]
+    for (const [p, want, label] of upCases) {
+      if (!fsSync.existsSync(new URL(p, import.meta.url))) { ok(`${label}：样本缺失（跳过）`, true, p); continue }
+      const im = decUp(fsSync.readFileSync(new URL(p, import.meta.url)))
+      const r = afUp(im.rgba, im.width, im.height, null)
+      ok(`强化界面判据：${label} → ${want ? '命中' : '不命中'}`,
+        r.upgradeMenu === want, `upgradeMenu=${r.upgradeMenu} diag=${JSON.stringify(r.upgradeDiag)}`)
+    }
+    // 决策层：认出升级界面时**只按 Esc**，绝不在里面按 Enter（那是升级 ＝ 花钱）
+    const pUp = mkUp('advance')
+    const upActs = []
+    for (let i = 0; i < 8; i++) {
+      const d = pUp.decide({
+        motion: 0.01, hudKick: 0, hudBright: 0.08,
+        hp: 0.6, shield: 0.09, combo: 0, progress: 0.5,
+        upgradeMenu: true, upgradeDiag: { dark: 0.84, demo: 122 },
+      }, { now: i * 700 })
+      upActs.push(d.action + (d.item ? ':' + d.item : ''))
+    }
+    ok('升级界面里只按 Esc（不按 Enter）',
+      upActs.every((a) => a === 'menu:back' || a === 'wait'), upActs.join(','))
+    ok('升级界面里没有 interact（Enter 在这里就是升级 ＝ 花钱）',
+      !upActs.some((a) => a.startsWith('interact')), upActs.join(','))
+    ok('升级界面里 Esc 有节流（8 帧里最多按 3 次，不然会连开暂停菜单）',
+      upActs.filter((a) => a === 'menu:back').length <= 3, upActs.join(','))
+    // 不在升级界面时，这条分支必须完全不干扰（否则每帧都按 Esc）
+    const pNo = mkUp('advance')
+    const noUp = pNo.decide({
+      motion: 0.02, hudKick: 0, hudBright: 0.08, hp: 0.6, shield: 0.09, combo: 0, progress: 0.5,
+      upgradeMenu: false,
+    }, { now: 0 })
+    ok('不是升级界面时不会按 Esc', noUp.action !== 'menu', JSON.stringify(noUp))
     ok('规则卡里强化台键位以提示框为准（不写死空格/Enter）',
       /以提示框写的键为准/.test(pbSrc) || /以提示框.*为准/.test(pbSrc), '')
     // 2026-10-29：接上游戏时顺手给规则卡精华，新会话不用先单独调一次 icey_playbook
