@@ -219,7 +219,21 @@ export function apply(ctx) {
       } catch (e) {
         lookNote = `但首帧没抓成：${e?.message || e}`
       }
-      return { text: `${describeStatus(st)}\n${lookNote}`, image }
+      // 2026-10-29：接上游戏时顺手把规则卡精华带上。
+      // 原来新会话必须先单独调一次 icey_playbook 才拿得到，等于白花一轮往返（6~12 秒）。
+      // 读不到也不影响接上游戏 —— 规则卡是附加信息，不是接上的前置条件。
+      let digest = ''
+      try {
+        const { PLAYBOOK } = await import('./lib/playbook.mjs')
+        digest = PLAYBOOK.digest || ''
+      } catch { /* 规则卡读不到就算了 */ }
+      const head = [describeStatus(st), lookNote].filter(Boolean).join('\n')
+      return {
+        text: digest
+          ? `${head}\n\n—— 规则卡精华（省得你再单独调一次 icey_playbook；要完整版再调它）——\n${digest}`
+          : head,
+        image,
+      }
     },
   })
 

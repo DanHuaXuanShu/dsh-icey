@@ -1736,6 +1736,9 @@ console.log('\n[6] 自主连玩策略')
     ok('规则卡记了「死亡界面要按两次 Enter」', /死亡界面要按两次/.test(pbSrc), '')
     ok('规则卡里强化台键位以提示框为准（不写死空格/Enter）',
       /以提示框写的键为准/.test(pbSrc) || /以提示框.*为准/.test(pbSrc), '')
+    // 2026-10-29：接上游戏时顺手给规则卡精华，新会话不用先单独调一次 icey_playbook
+    ok('icey_start 会带上规则卡精华（省掉一次 playbook 往返）',
+      /规则卡精华/.test(fsA) && /PLAYBOOK\.digest/.test(fsA), '')
   }
 }
 
