@@ -327,7 +327,17 @@ export function apply(ctx) {
             + `门槛要求宽度 ≥${(ad.minSpan * 100).toFixed(1)}%（${verdict}）。`,
           )
         } else {
-          lines.push('敌人箭头：画面里没有黄块。')
+          // 连一块黄带都没形成 —— 把「它眼里的黄」也报出来。
+          // 这一层是为了分清两件事：色域定得太窄（有黄但不够亮），还是通道顺序反了（整图根本没有红高蓝低）。
+          const yc = ad && typeof ad.yellowish === 'number' ? ad.yellowish : null
+          const sm = ad && ad.sample
+          lines.push(
+            '敌人箭头：没认出黄块。'
+            + (yc === null ? '' : `全图「像黄」的像素 ${yc} 个`)
+            + (sm ? `，其中最亮的原生 RGB=(${sm.join(',')})` : '（一个都没有）')
+            + (ad && ad.size ? `；分析图 ${ad.size}` : '')
+            + '。',
+          )
         }
       }
       // 后台战斗时把运行态一起带上：这一帧就是「战斗中」的画面，
