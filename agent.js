@@ -307,7 +307,9 @@ export function apply(ctx) {
       // 2026-10-29：把「黄箭头到底看到了什么」暴露出来。
       // 之前 enemyDir 只在内部用来选方向，外面完全看不见 ——「它有没有发现敌人在左」只能靠猜。
       {
-        const m = frame.health || {}
+        // ⚠️ 必须是 frame.metrics，不是 frame.health ——
+        //   health 只有宽高/黑白比/哈希，读 enemyDir 永远是 undefined（2026-10-29 踩过）。
+        const m = frame.metrics || {}
         const dirWord = m.enemyDir === 'left' ? '左' : m.enemyDir === 'right' ? '右' : null
         const ad = m.arrowDiag
         if (dirWord) {
