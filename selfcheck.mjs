@@ -1775,6 +1775,20 @@ console.log('\n[6] 自主连玩策略')
     // 否则模型看到截图还在菜单，会以为自己按错了、再调一次 —— 又白烧十秒。
     ok('规则卡说清 menu:resume 已替你连按两次（调一次就够）',
       /menu:resume/.test(pbSrc) && /连按两次/.test(pbSrc), '')
+
+    // 疑似死亡回档（2026-10-29 用户纠正「钱变少是死亡回档」之后加的）
+    // 插件此前**完全没有死亡信号**，HANDOFF 里「档位遥测在拿死过一次又满血的数据装懂」就是它。
+    const deathEvSrc = fsSync.readFileSync(new URL('./lib/events.mjs', import.meta.url), 'utf8')
+    const deathGmSrc = fsSync.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
+    const { KINDS: EV_KINDS } = await import('./lib/events.mjs')
+    ok('事件表登记了 death-revive（否则事件层会当成拼错的 kind）',
+      EV_KINDS.includes('death-revive'), EV_KINDS.join(','))
+    ok('回档检测判据在：残血 → 血盾同时回高位',
+      /death-revive/.test(deathGmSrc) && /wasLow/.test(deathGmSrc) && /nowHealthy/.test(deathGmSrc), '')
+    ok('回档检测排除了处决回血（处决也会回血回盾）',
+      /notExecuteHeal/.test(deathGmSrc) && /execAt/.test(deathGmSrc), '')
+    ok('回档事件文案写明「疑似」+「别当赚的/花的」（插件读不到钱，不能替玩家下结论）',
+      /疑似死亡回档/.test(deathGmSrc) && /存档点的数/.test(deathGmSrc), '')
     ok('规则卡里强化台键位以提示框为准（不写死空格/Enter）',
       /以提示框写的键为准/.test(pbSrc) || /以提示框.*为准/.test(pbSrc), '')
     // 2026-10-29：接上游戏时顺手给规则卡精华，新会话不用先单独调一次 icey_playbook
