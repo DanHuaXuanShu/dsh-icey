@@ -539,11 +539,11 @@ export function apply(ctx) {
       + '省掉仗早打完还在原地空挥的那段时间。\n'
       + '⚠️ 它仍然没有视觉理解：只会按信号走/打/脱困。遇到锁住的门、需要解谜、'
       + '或者要走高处入口，还是得你自己用 icey_look + icey_act 判断。\n'
-      + '典型用法：icey_auto({task:"往右推进", until:"safe", seconds:120})'
+      + '典型用法：icey_auto({task:"往右推进", until:"safe", seconds:60})'
       + ' → 它一路推进、遇敌自己打、打完就停回来报告。',
     parameters: {
       task: { type: 'string', description: '一句话任务（推进 / 探索 / 战斗）' },
-      seconds: { type: 'integer', description: '最多跑多久（5–300 秒，默认 90）' },
+      seconds: { type: 'integer', description: '最多跑多久（默认 90）。硬上限看预设：战斗 120 秒、其余 60 秒 —— 超了会被截断，摘要里会明确告诉你实际按多少秒跑' },
       until: { type: 'string', description: 'safe = 脱离战斗就提前停；不填 = 跑满 seconds' },
       dir: { type: 'string', description: '推进方向 right / left，默认 right' },
       brief: { type: 'boolean', description: 'true = 不带截图（省 token）' },
@@ -616,7 +616,7 @@ export function apply(ctx) {
       + '第一次玩建议先调 icey_playbook 看一眼规则卡（哪些门打不开、哪些键会退游戏），能少踩坑。\n'
       + '返回里的截图按时间顺序排列，用它们判断这轮有没有实际进展。',
     parameters: {
-      seconds: { type: 'integer', description: '连玩多久（5–300 秒，默认 30）。先试 30 秒，看得动再加长' },
+      seconds: { type: 'integer', description: '连玩多久（默认 30）。硬上限：preset=fight 120 秒，其余 60 秒 —— 传更大的值会被截断，摘要会告诉你实际跑了多少秒' },
       preset: { type: 'string', description: 'advance / fight / explore，默认 advance' },
       captureEvery: { type: 'integer', description: '每隔几秒留一张途中截图（默认 12）' },
       maxFrames: { type: 'integer', description: '最多留几张截图（0–4，默认 3；每张都花 token）' },

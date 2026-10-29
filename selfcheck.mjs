@@ -587,7 +587,12 @@ console.log('\n[3] 控制映射')
   const pause = planAction({ action: 'pause' })
   eq('pause → Esc', pause.steps.map((s) => s.key), ['Escape'])
   const menu = planAction({ action: 'menu', item: 'resume' })
-  eq('menu resume → Enter', menu.steps.map((s) => s.key), ['Enter'])
+  // 2026-10-29 改：暂停菜单经常要按两次才吃，一次 Enter 只吃掉一层 ⇒ 直接发两次。
+  eq('menu resume → Enter 两次', menu.steps.map((s) => s.key), ['Enter', 'Enter'])
+  ok('menu resume 两次之间有间隔（背靠背会被游戏当成一次）',
+    !!menu.steps[1] && menu.steps[1].gapMs >= 200, 'gapMs=' + (menu.steps[1] && menu.steps[1].gapMs))
+  eq('menu back → Esc（只关闭，不选中任何项）',
+    planAction({ action: 'menu', item: 'back' }).steps.map((s) => s.key), ['Escape'])
   let threw = null
   try { planAction({ action: 'nope' }) } catch (e) { threw = e.message }
   ok('未知动作报错', !!threw, threw)
@@ -856,8 +861,40 @@ console.log('\n[6] 自主连玩策略')
   }
   // 前 HUD_GONE_FRAMES-1 帧是「确认期」，允许照常动作（宁可多动两下，
   // 也不要在真战斗里因为一帧遮挡就停手）；确认之后必须停手，不许再挥刀。
-  ok('血盾连击都不在画面里时，确认之后停手（不再挥刀）',
-    hudGoneActions.slice(HUD_GONE_FRAMES - 1).every((a) => a === 'wait'), hudGoneActions.join(','))
+  //
+  // 2026-10-29 用户实测改：advance 站在强化台旁看到白字框就按 Enter，
+  //   第一次打开强化界面，界面里第二次 Enter 是「升级」⇒ 真花钱（$173→$169）。
+  //   所以确认之后的第一步不是干等，而是按 Esc 把误入的界面关掉；之后才停手。
+  ok('血盾连击都不在画面里时，确认之后先按 Esc 关界面',
+    hudGoneActions[HUD_GONE_FRAMES - 1] === 'menu', hudGoneActions.join(','))
+  ok('…关界面之后停手（不再挥刀）',
+    hudGoneActions.slice(HUD_GONE_FRAMES).every((a) => a === 'wait'), hudGoneActions.join(','))
+  ok('整屏界面只用 Esc，绝不按 Enter（Enter 在强化界面里是「升级」= 花钱）',
+    !hudGoneActions.includes('interact'), hudGoneActions.join(','))
+  ok('整屏界面里 Esc 只按一次（Esc 无效说明这界面不吃它，再按只是刷屏）',
+    hudGoneActions.filter((a) => a === 'menu').length === 1, hudGoneActions.join(','))
+
+  // ⑬c 提示框亮着、人卡住不动 ⇒ 同一段卡住只按 1 次 Enter（2026-10-29 从 2 降到 1）
+  //
+  // 来由（用户实测）：弥城死镇出生点紧挨一台黄色强化台。
+  //   第 1 次 Enter 打开强化界面（钱没动），
+  //   第 2 次 Enter 在界面里就是「升级」⇒ 钱从 $173 掉到 $169。
+  //   原来给 2 次的理由是「有的门要按两次」，但那条没有任何实测支持，
+  //   而「按两次」的代价是实打实的丢钱。
+  for (const gap of [400, 1200]) {
+    const pPrompt = createPolicy('advance')
+    let promptPresses = 0
+    for (let i = 0; i < 40; i++) {
+      const d = pPrompt.decide({
+        motion: 0.002, hudKick: 0, hudBright: 0.08,
+        hp: 0.6, shield: 0.09, combo: 0,
+        progress: 0, promptBright: 0.003,
+      }, { now: i * gap })
+      if (d.action === 'interact') promptPresses++
+    }
+    ok(`提示框一直亮着时只按 1 次 Enter（步长 ${gap}ms）—— 第 2 次在强化界面里就是花钱`,
+      promptPresses === 1, '按了 ' + promptPresses + ' 次')
+  }
   ok('HUD_GONE_READING 比满血读数低一个量级',
     HUD_GONE_READING > 0 && HUD_GONE_READING < 0.02, String(HUD_GONE_READING))
 
@@ -1734,6 +1771,10 @@ console.log('\n[6] 自主连玩策略')
     ok('icey_auto 也渲染 safetyPaused（不再只有 icey_play 有）', /safetyPaused/.test(autoBody), '')
     const pbSrc = fsSync.readFileSync(new URL('./lib/playbook.mjs', import.meta.url), 'utf8')
     ok('规则卡记了「死亡界面要按两次 Enter」', /死亡界面要按两次/.test(pbSrc), '')
+    // 2026-10-29：menu:resume 已经自己连按两次，规则卡要说清「调一次就够」，
+    // 否则模型看到截图还在菜单，会以为自己按错了、再调一次 —— 又白烧十秒。
+    ok('规则卡说清 menu:resume 已替你连按两次（调一次就够）',
+      /menu:resume/.test(pbSrc) && /连按两次/.test(pbSrc), '')
     ok('规则卡里强化台键位以提示框为准（不写死空格/Enter）',
       /以提示框写的键为准/.test(pbSrc) || /以提示框.*为准/.test(pbSrc), '')
     // 2026-10-29：接上游戏时顺手给规则卡精华，新会话不用先单独调一次 icey_playbook
