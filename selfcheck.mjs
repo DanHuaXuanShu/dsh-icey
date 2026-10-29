@@ -1056,14 +1056,25 @@ console.log('\n[6] 自主连玩策略')
     // ⑤ 2026-10-26 四轮真机：`foeDir` 几乎总是非空（金色强化台、左上护盾黄格、连击数字都是黄的），
     //    而原来「翻面」的前提写成了「`!foeDir`」⇒ 346 个动作一次都没翻过。
     //    现在放宽成「指针空 or 指针指着当前朝向」，这条才活得下来。
+    // ⚠️ 2026-10-29 改：这里原来断言「指针指着当前朝向且打不中时也会翻面」。
+    //    那条是当天早些时候的结论，理由是「foeDir 几乎总是非空 ⇒ 翻面永远不触发」。
+    //    但用户看录像指出「黄色箭头在左、角色贴右边一直卡着」，查下来真正的病根是
+    //    「箭头 → 走过去接战」这条逻辑写在探索分支里、战斗中根本执行不到。
+    //    补上「敌人在画面外就朝箭头走过去」之后，「有箭头时不翻面」不再是死角 ——
+    //    因为有更对的反应（走过去）。留着旧断言就等于要求她背对敌人转身。
+    //    现在这条改成验新语义：有箭头时**不许**翻面背对它，但必须朝它走过去。
     const pf5b = mkPolicy('advance')
     pf5b.decide(fightFrame({ enemyDir: 'right' }), { now: 0 })   // 朝向 right，指针也指 right
     const seq5b = []
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 6; i++) {
       seq5b.push(pf5b.decide(fightFrame({ enemyDir: 'right' }), { now: i * 800 }))
     }
-    ok('指针指着当前朝向且打不中时也会翻面（foeDir 非空不再是死角）',
-      seq5b.some((d) => d.action === 'face'), seq5b.map((d) => d.action).join(','))
+    ok('指针指着敌人时不会翻面背对它（改为朝那边走）',
+      !seq5b.some((d) => d.action === 'face'),
+      seq5b.map((d) => d.action).join(','))
+    ok('指针指着敌人时会朝那边走过去（这才是有用的反应）',
+      seq5b.some((d) => d.action === 'move' && d.dir === 'right'),
+      seq5b.map((d) => `${d.action}${d.dir ? ':' + d.dir : ''}`).join(','))
     // ⑥ 处决节流：提示一直挂着，也不能每帧都按 L（键帽检测分不出 L/U/E，误判会锁死战斗）
     const pEx = mkPolicy('advance')
     const exSeq = []
@@ -1926,6 +1937,39 @@ console.log('\n[6] 自主连玩策略')
         acts2.join(','))
       ok('屏障亮着时不会被判成「卡住」而去按确认键',
         !acts2.includes('interact'), acts2.join(','))
+    }
+
+    // 黄色箭头 = 敌人在那边（2026-10-29 用户指出：箭头在左、角色贴右边一直卡着）
+    {
+      const pFoe = mkUp('advance')
+      const dirs = []
+      const whys3 = []
+      for (let i = 0; i < 16; i++) {
+        const d = pFoe.decide({
+          motion: 0.02, hudKick: 0, hudBright: 0.08,
+          hp: 0.55, shield: 0.09, combo: 0.02, progress: 0,
+          enemyDir: 'left', barrier: true,
+        }, { now: i * 700 })
+        whys3.push(`${d.action}${d.dir ? ':' + d.dir : ''} | ${d.why || ''}`)
+        if (d.dir) dirs.push(d.dir)
+      }
+      ok('敌人在左边时，所有带方向的移动都朝左（不会往反方向挪）',
+        dirs.length > 0 && dirs.every((x) => x === 'left'), [...new Set(dirs)].join(','))
+      ok('敌人在左边时会先走过去接战，而不是原地打空气',
+        whys3.some((w) => /敌人在画面外，走过去接战/.test(w)), '')
+      ok('箭头指着敌人时不会翻面背对它（原来会 face:left→face:right 来回抽）',
+        !whys3.some((w) => /翻面向右|翻面向左/.test(w)), '')
+      // 反过来验：没有箭头时「连击不涨就翻面」这条老功能不能被弄丢
+      const pNoFoe = mkUp('advance')
+      let flipped = false
+      for (let i = 0; i < 12; i++) {
+        const d = pNoFoe.decide({
+          motion: 0.02, hudKick: 0, hudBright: 0.08,
+          hp: 0.55, shield: 0.09, combo: 0.02, progress: 0.5,
+        }, { now: i * 700 })
+        if (d.action === 'face') flipped = true
+      }
+      ok('没有箭头时，「连击不涨就翻面」仍然有效', flipped, '')
     }
     ok('规则卡里强化台键位以提示框为准（不写死空格/Enter）',
       /以提示框写的键为准/.test(pbSrc) || /以提示框.*为准/.test(pbSrc), '')
