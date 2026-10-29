@@ -304,6 +304,32 @@ export function apply(ctx) {
           : `现在不能操作：${st.health?.reason || '原因未知'}`,
         '想看「现在能按什么键」可以再来一次 icey_look({crop:"prompt"})。',
       ]
+      // 2026-10-29：把「黄箭头到底看到了什么」暴露出来。
+      // 之前 enemyDir 只在内部用来选方向，外面完全看不见 ——「它有没有发现敌人在左」只能靠猜。
+      {
+        const m = frame.health || {}
+        const dirWord = m.enemyDir === 'left' ? '左' : m.enemyDir === 'right' ? '右' : null
+        const ad = m.arrowDiag
+        if (dirWord) {
+          lines.push(`敌人箭头：指向${dirWord}（黄色实心 = 那边有敌人，和白色空心的「往这走」不是一回事）。`)
+        } else if (ad && Array.isArray(ad.bands) && ad.bands.length) {
+          const near = ad.bands
+            .filter((b) => b.span > 0.01)
+            .slice(0, 3)
+            .map((b) => `x=${b.x} 宽${(b.span * 100).toFixed(1)}%`)
+            .join('、')
+          const widest = ad.bands[0]
+          const verdict = widest.span < ad.minSpan
+            ? `最宽那块 ${(widest.span * 100).toFixed(1)}%，卡在门槛下面`
+            : '有块够宽，但被别的条件筛掉了'
+          lines.push(
+            `敌人箭头：没认出来。画面里最大的黄块 ${near || '（没有像箭头的）'}；`
+            + `门槛要求宽度 ≥${(ad.minSpan * 100).toFixed(1)}%（${verdict}）。`,
+          )
+        } else {
+          lines.push('敌人箭头：画面里没有黄块。')
+        }
+      }
       // 后台战斗时把运行态一起带上：这一帧就是「战斗中」的画面，
       // 模型据此决定要不要微调（不看这条，它会以为自己看到的是静止画面）。
       if (st.background?.running) {
