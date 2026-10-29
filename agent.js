@@ -16,7 +16,7 @@
  */
 import { loadHostDeps } from './lib/hostdeps.mjs'
 import { session } from './lib/session.mjs'
-import { summarizeRun } from './lib/autoplay.mjs'
+import { summarizeRun, describeCombat } from './lib/autoplay.mjs'
 // 批量动作：把「一串动作」压进一次工具调用，省掉中间的模型往返（每次 6~12 秒）
 import { parseActionSpec, MAX_SEQUENCE } from './lib/control.mjs'
 import { registerIceyDev } from './lib/devtool.mjs'
@@ -103,6 +103,9 @@ function describeStatus(st) {
     lines.push(`上一场后台战斗：${l.seconds} 秒（${l.preset || '?'}），停因「${l.stopped || '未知'}」。`)
     const acts = fmtActions(l.actions)
     if (acts) lines.push(`  动作：${acts}`)
+    // 2026-10-29：连击区峰值/上涨次数 —— 后台模式打完只有动作计数的话，
+    // 分不清「打中了」和「空挥了一整场」。这一行就是那个分界。
+    if (l.combat) lines.push(`  ${describeCombat(l.combat)}`)
     if (l.order && (l.order.focus !== 'auto' || l.order.style !== 'auto')) {
       lines.push(`  当时微调：focus=${l.order.focus} style=${l.order.style}`)
     }
