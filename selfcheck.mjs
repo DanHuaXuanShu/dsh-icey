@@ -2041,6 +2041,29 @@ console.log('\n[6] 自主连玩策略')
         sweepRun({ barrier: false }, 20).every((d) => !/沿地面往/.test(d.why || '')), '')
     }
 
+    // 低血闪避不许变成逃跑（2026-10-30 实测：测试会话 3 轮里「低血：闪开」出现 18 次，
+    //   血量掉到 11.4%、最长 58 秒一次没打中 —— 因为闪完就背对敌人接着砍空气）
+    {
+      const pPanic = mkUp('advance')
+      const acts = []
+      for (let i = 0; i < 28; i++) {
+        // 血一直很低（10/62 ≈ 16%），敌人一直在右边
+        acts.push(pPanic.decide({
+          motion: 0.02, hudKick: 0, hudBright: 0.08,
+          hp: 0.10, shield: 0.02, combo: 0, progress: 0,
+          enemyDir: 'right', barrier: true,
+        }, { now: i * 700 }))
+      }
+      const dodges = acts.filter((d) => /低血：闪开/.test(d.why || ''))
+      const refaces = acts.filter((d) => /刚闪完/.test(d.why || ''))
+      ok('低血闪避之后会转回去（不会背对敌人一直砍空气）',
+        refaces.length > 0 && refaces.every((d) => d.dir === 'right'),
+        `闪 ${dodges.length} 次 / 转回 ${refaces.length} 次`)
+      ok('低血闪避有上限（连闪三次就收手先打 6 秒，不会整场只剩闪）',
+        dodges.length <= 12,
+        `28 拍里闪了 ${dodges.length} 次`)
+    }
+
     // 回归：战斗里的移动注入原来写的是 `foeDir || dir`，而 dir 是探索方向（一直是 right）。
     // 按本文件自己写下的机制「朝向 = 最后一次移动方向」，那等于每 7 拍把她掰回朝右、
     // 还顺带推向右边 —— 用户看到的「一直卡在右边」就是这么来的。
