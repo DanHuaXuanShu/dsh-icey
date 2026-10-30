@@ -2002,6 +2002,56 @@ console.log('\n[6] 自主连玩策略')
       ok('但挨打超过 12 秒还打不中就还是要换打法（已经不是稳阵脚的问题了）',
         stallRun((t) => Math.max(0.2, 0.70 - t * 0.004), 20).length > 0, '')
     }
+    // 打不中就沿地面扫过去（2026-10-30）
+    //   起因：2422 秒录像里有整段「屏障亮着 + 连击 0%」，最长 55 秒，
+    //   她贴着屏障一下一下朝空气挥 —— 战斗分支当时没有任何一条会真的走过去。
+    {
+      const sweepRun = (opts, secs) => {
+        const p = mkUp('advance')
+        const out = []
+        for (let i = 0; i < secs; i++) {
+          out.push(p.decide({
+            motion: 0.02, hudKick: 0, hudBright: 0.08,
+            hp: 0.55, shield: 0.09, combo: 0, progress: 0,
+            barrier: opts.barrier !== false,
+            ...(opts.enemyDir ? { enemyDir: opts.enemyDir } : {}),
+          }, { now: i * 700 }))
+        }
+        return out
+      }
+      const run = sweepRun({}, 20)
+      const sweeps = run.filter((d) => /沿地面往/.test(d.why || ''))
+      ok('连击消失、血盾没掉、也没有箭头 ⇒ 会朝前走一段（不再原地挥空气）',
+        sweeps.length > 0, run.slice(0, 6).map((d) => d.action).join(','))
+
+      // 走的方向不能每 1.2 秒掉一次头（那还是原地抽搐，只是换了个动作名）
+      const sweepDirs = sweeps.map((d) => d.dir).filter(Boolean)
+      let flips = 0
+      for (let i = 1; i < sweepDirs.length; i++) if (sweepDirs[i] !== sweepDirs[i - 1]) flips++
+      ok('扫场地时换边有节奏（14 秒里换向 2~8 次，不是每拍都掉头）',
+        flips >= 2 && flips <= 8, `换向 ${flips} 次 / 扫步 ${sweepDirs.length} 次`)
+      ok('扫场地会两边都走到（不会一直朝同一边撞墙）',
+        new Set(sweepDirs).size === 2, [...new Set(sweepDirs)].join(','))
+
+      // 有箭头时不能扫 —— ①-a 已经朝那边走了，再扫就是反着来
+      ok('知道敌人在哪边时不会盲扫（不会和「走过去接战」对着干）',
+        sweepRun({ enemyDir: 'left' }, 20).every((d) => !/沿地面往/.test(d.why || '')), '')
+      // 不在战斗时也不扫（这条只在战斗分支里）
+      ok('不在战斗时不扫（探索另有探索的节奏）',
+        sweepRun({ barrier: false }, 20).every((d) => !/沿地面往/.test(d.why || '')), '')
+    }
+
+    // 回归：战斗里的移动注入原来写的是 `foeDir || dir`，而 dir 是探索方向（一直是 right）。
+    // 按本文件自己写下的机制「朝向 = 最后一次移动方向」，那等于每 7 拍把她掰回朝右、
+    // 还顺带推向右边 —— 用户看到的「一直卡在右边」就是这么来的。
+    {
+      const apSrcForMove = fsSync.readFileSync(new URL('./lib/autoplay.mjs', import.meta.url), 'utf8')
+      const combatMoveSrc = (apSrcForMove.match(/action: '(chase|dash)', dir: foeDir \|\| (\w+)/g) || [])
+      ok('战斗里的移动注入用跟踪到的朝向（facing），不用探索方向（dir）',
+        combatMoveSrc.length >= 1 && combatMoveSrc.every((s) => /facing$/.test(s)),
+        combatMoveSrc.join(' / '))
+    }
+
     ok('规则卡里强化台键位以提示框为准（不写死空格/Enter）',
       /以提示框写的键为准/.test(pbSrc) || /以提示框.*为准/.test(pbSrc), '')
     // 2026-10-29：接上游戏时顺手给规则卡精华，新会话不用先单独调一次 icey_playbook
