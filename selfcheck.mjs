@@ -1971,6 +1971,37 @@ console.log('\n[6] 自主连玩策略')
       }
       ok('没有箭头时，「连击不涨就翻面」仍然有效', flipped, '')
     }
+
+    // 断连原因分类（2026-10-30 用户补的游戏机制）
+    //   连击数在「一段时间没打中 / 破盾后受击 / 受击」三种情况下都会消失。
+    //   后两种都在战斗里 ⇒ 「连击没了」不能当成「打空了」。
+    {
+      const stallRun = (hpAt, secs, opts = {}) => {
+        const p = mkUp('advance')
+        const out = []
+        for (let i = 0; i < secs; i++) {
+          out.push(p.decide({
+            motion: 0.02, hudKick: 0, hudBright: 0.08,
+            hp: hpAt(i * 0.7),
+            shield: opts.shieldAt ? opts.shieldAt(i * 0.7) : 0.09,
+            combo: 0, progress: 0, enemyDir: 'left',
+            barrier: opts.barrier !== false,
+          }, { now: i * 700 }))
+        }
+        return out.filter((d) => /僵持第/.test(d.why || ''))
+      }
+      ok('连击断了但血盾没动 ⇒ 判打空，换打法',
+        stallRun(() => 0.55, 10).length > 0, '')
+      ok('连击断了但血在掉 ⇒ 判挨打，不换位（换位只会离敌人更远）',
+        stallRun((t) => Math.max(0.2, 0.70 - t * 0.02), 10).length === 0, '')
+      ok('破盾后受击（盾先掉）也算挨打，不换位',
+        stallRun((t) => Math.max(0.3, 0.70 - t * 0.008), 10,
+          { shieldAt: (t) => Math.max(0, 0.09 - t * 0.04) }).length === 0, '')
+      ok('不在战斗时不会触发僵持（连击消失不等于在战斗）',
+        stallRun(() => 0.55, 10, { barrier: false }).length === 0, '')
+      ok('但挨打超过 12 秒还打不中就还是要换打法（已经不是稳阵脚的问题了）',
+        stallRun((t) => Math.max(0.2, 0.70 - t * 0.004), 20).length > 0, '')
+    }
     ok('规则卡里强化台键位以提示框为准（不写死空格/Enter）',
       /以提示框写的键为准/.test(pbSrc) || /以提示框.*为准/.test(pbSrc), '')
     // 2026-10-29：接上游戏时顺手给规则卡精华，新会话不用先单独调一次 icey_playbook
