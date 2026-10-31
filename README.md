@@ -171,8 +171,19 @@ icey_act({ sequence: ["jjji", "move:right:400", "dash:up:200", "wait:150"] })
 > 2026-10-25 实测：按 Q 选「是」之后，画面黑屏转场 → ICEY 标题 → 主菜单 → 新周目。
 > 所以它确实是一道真选择，会影响后续内容。
 
-另外挖到但还没接进自动连玩的：`CounterAttack`（反击）、`DefenseAir`（空中防御）、
-`HitArmor`（霸体）、`SpAttack`（特殊攻击）。
+⚠️ **dll 里的名字不都是艾希的招式。** 原始字符串表（`shots/moves-extracted.txt`，766 行）
+里混着**敌人 AI 的状态和参数**，这些玩家按不出来，别去找它们的键：
+
+| 名字 | 它其实是 |
+|---|---|
+| `CounterAttack` | 敌人的反击 —— 旁边就是 `counterAttackProbPercentage`（按概率反手）和 `canCounterAttack` 判定 |
+| `SpAttack` | 敌人的特殊攻击 —— `BeelzebubSpAttackSuccess` = 别西卜的特殊攻击成功 |
+| `DefenseAir` | 状态机里的空中防御 —— `FallToDefenseAir`（从坠落转入）、`JumperDefence`（跳跳怪的防御） |
+| `HitArmor` | 受击护甲 / 霸体，孤立出现，没有参数 |
+
+它们对**打 BOSS** 反而更有用：`counterAttackProbPercentage` 可能是我们连段突然被打断的原因
+（不是插件按错，是敌人按概率反手），`willBeExecute` / `HitIntoWeakState` / `HitArmor`
+解释了「为什么打不动」。但这些只能当**判据**用，而画面里现在还读不出这些状态。
 
 **已经用上的（但这里有过一处更正）**：`icey_play` 打架分支里那个「chase」是
 **朝当前方向走一步 + 点一下 U**，不是「朝敌人突进」——
