@@ -1834,11 +1834,13 @@ console.log('\n[6] 自主连玩策略')
     const pTier = createPolicy('advance')
     // 先满血满盾打几帧（把基线立起来）
     for (let i = 0; i < 6; i++) {
-      pTier.decide({ motion: 0.3, combo: 1, hudKick: 0, hudBright: 0.08, progress: 0.5, hp: 0.69, shield: 0.10 }, { now: i * 300 })
+      pTier.decide({ motion: 0.3, combo: 1, hudKick: 0, hudBright: 0.08, progress: 0.5, hp: 0.93, shield: 0.10 }, { now: i * 300 })
     }
     const cs0 = pTier.combatStats
     ok('战斗帧会被计入遥测', cs0.frames >= 6, `frames=${cs0.frames}`)
-    ok('基线取到了满血实测值', Math.abs(cs0.hpBaseline - 0.69) < 0.001 && Math.abs(cs0.shieldBaseline - 0.10) < 0.001,
+    // 喂 0.93（满血实测 92.86% 取整），但基线上限是 0.92 —— 所以基线落在 0.92。
+  // 这正好说明「物理上限」在起作用：污染帧再高也顶不上去。
+  ok('基线取到了满血实测值（并被物理上限 0.92 夹住）', Math.abs(cs0.hpBaseline - 0.92) < 0.001 && Math.abs(cs0.shieldBaseline - 0.10) < 0.001,
       `hp基线=${cs0.hpBaseline} shield基线=${cs0.shieldBaseline}`)
     // 再打到破盾+血少：必须换档，且换档记录里带着原始读数
     for (let i = 6; i < 10; i++) {
