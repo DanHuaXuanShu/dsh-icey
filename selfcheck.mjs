@@ -659,7 +659,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO, FIGHT_MOTION, FIGHT_ACTIVE_RATIO, HUD_GONE_READING, HUD_GONE_FRAMES } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, VFX_SKIP_TOP, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO, FIGHT_MOTION, FIGHT_ACTIVE_RATIO, HUD_GONE_READING, HUD_GONE_FRAMES } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -1303,14 +1303,31 @@ console.log('\n[6] 自主连玩策略')
   ok('提示框信号很弱时不盲按 Enter', dN.action !== 'interact', JSON.stringify(dN))
   ok('PROMPT_MIN 落在实测区间内', PROMPT_MIN > 0.0001 && PROMPT_MIN < 0.002, String(PROMPT_MIN))
 
-  // ㉘ 实战数据学到的预警闪避：亮闪≥VFX_DANGER 就先闪（24 分钟数据：大伤害前 6.61% vs 全局 4.09%）
-  ok('VFX_DANGER 落在实测区间（4.09% 与 6.61% 之间）', VFX_DANGER > 0.041 && VFX_DANGER < 0.066, String(VFX_DANGER))
+  // ㉘ 预警闪避：亮闪≥VFX_DANGER 就先闪。
+  //
+  // 🔴 2026-10-31 这段整块重写 —— 原来的断言是在**错的尺度**上钉死的：
+  //    旧注释「24 分钟数据：大伤害前 6.61% vs 全局 4.09%」里的 4.09 / 6.61
+  //    是在**带窗口标题栏**的帧上量的（capture 走 GetWindowRect，含 13 行纯白标题栏，
+  //    白条自己就贡献约 3% 的「很亮像素」）。
+  //    所以「VFX_DANGER 落在 4.1%~6.6% 之间」这条断言，本质上是在守护一个 bug：
+  //    它要求常量必须落在一个只有标题栏才存在的区间里。
+  //
+  //    正确的尺度（跳过顶部 4% 之后，2422 帧实测）：
+  //      掉血帧   p50 0.12%  p75 0.40%  p95 4.12%
+  //      非掉血帧  p50 0.12%  p75 0.42%  p95 2.83%
+  //    中位数一样 ⇒ 这条判据本身就弱，阈值按「代价不对称」定在 3%（TPR 10% / FPR 4.5%）。
+  ok('VFX_DANGER 落在内容区尺度的合理区间（1.5%~5%）',
+    VFX_DANGER > 0.015 && VFX_DANGER < 0.05, String(VFX_DANGER))
+  ok('亮闪必须跳过顶部标题栏那一条（否则常量会随窗口尺寸变含义）',
+    VFX_SKIP_TOP > 0.02 && VFX_SKIP_TOP < 0.08, String(VFX_SKIP_TOP))
   const pVfx = createPolicy('advance')
   const dVfx = pVfx.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5, vfx: 0.07 }, { now: 0 })
   ok('亮闪升高时先闪避而不是硬打', dVfx.action === 'dash', JSON.stringify(dVfx))
   ok('闪避理由写明了数据依据', /亮闪/.test(dVfx.why || ''), dVfx.why)
+  // 「不乱闪」的样本必须低于新阈值：旧样本是 0.03（= 新阈值的等号，必然误触发），
+  // 那是断言写死了旧常量、而不是行为变坏了。改成明显低于阈值的 0.01。
   const pNoVfx = createPolicy('advance')
-  const dNoVfx = pNoVfx.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5, vfx: 0.03 }, { now: 0 })
+  const dNoVfx = pNoVfx.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5, vfx: 0.01 }, { now: 0 })
   ok('亮闪正常时不乱闪', dNoVfx.action !== 'dash' || !/亮闪/.test(dNoVfx.why || ''), JSON.stringify(dNoVfx))
 
   // ㉓ 行动权重：确定性 + 每个 preset 的权重表都存在

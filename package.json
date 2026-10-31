@@ -1,6 +1,6 @@
 {
   "name": "dsh-icey",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "让 DeepSeek Harness 的 agent 真的能玩《艾希 ICEY》：实时画面、看得懂的截图、按得动的操作；战斗中插件持续主控、模型随时看画面微调。",
   "type": "module",
   "license": "MIT",
