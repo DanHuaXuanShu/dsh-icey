@@ -685,7 +685,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, VFX_SKIP_TOP, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO, FIGHT_MOTION, FIGHT_ACTIVE_RATIO, HUD_GONE_READING, HUD_GONE_FRAMES } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, VFX_SKIP_TOP, PROMPT_BOX, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO, FIGHT_MOTION, FIGHT_ACTIVE_RATIO, HUD_GONE_READING, HUD_GONE_FRAMES } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -1331,6 +1331,18 @@ console.log('\n[6] 自主连玩策略')
   const dN = pN.decide({ motion: 0.015, hudKick: 0, hudBright: 0.08, progress: 0.01, promptBright: 0.0002 }, { now: 0 })
   ok('提示框信号很弱时不盲按 Enter', dN.action !== 'interact', JSON.stringify(dN))
   ok('PROMPT_MIN 落在实测区间内', PROMPT_MIN > 0.0001 && PROMPT_MIN < 0.002, String(PROMPT_MIN))
+  // 🔴 2026-10-31 加：PROMPT_BOX 的 y0 必须盖住三行提示，否则判据只靠后两行撑着。
+  //    实机截图（1602x932，标题栏 32px，客户区 1602x900）量出三行文字占 0.464~0.567。
+  //    旧值 0.50（含标题栏口径 = 0.482）一直切掉第一行，只是从没人量过。
+  ok('PROMPT_BOX 顶部必须高于提示文字顶（0.464），否则第一行被切',
+    PROMPT_BOX.y0 < 0.464, `y0=${PROMPT_BOX.y0}`)
+  ok('PROMPT_BOX 底部要盖住最后一行（0.567）',
+    PROMPT_BOX.y1 > 0.567, `y1=${PROMPT_BOX.y1}`)
+  // 注意别写成「不能和 SUBTITLE_BOX 的定义框重叠」—— 那个框从 0.689 就开始了，
+  // 但字幕**文字**实测在 0.90~0.94，两者中间是空的。重叠定义框本身无害，
+  // 有害的是把字幕文字圈进来（那会把「有旁白」误判成「有互动提示」）。
+  ok('PROMPT_BOX 别圈到字幕文字（实测在 0.90 以上）',
+    PROMPT_BOX.y1 < 0.85, `y1=${PROMPT_BOX.y1}`)
 
   // ㉘ 预警闪避：亮闪≥VFX_DANGER 就先闪。
   //
