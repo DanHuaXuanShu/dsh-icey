@@ -285,6 +285,36 @@ if (!GIVEN_BOX) {
   console.log(`\n=== 选中的框（收紧前）===\n${fmt(merged)}`)
   console.log(`=== 收紧后 ===\n${fmt(t.box)}   裁掉 左${t.trimmed.left} 右${t.trimmed.right} 上${t.trimmed.top} 下${t.trimmed.bottom} 像素`)
 
+  // 稳定性：把这个框当成常量之前，先看它在**每一帧上漂不漂**。
+  // 只报一个"合并框"是不够的 —— 如果每帧的紧框差 0.05，那个合并框就是个假常量。
+  if (files.length >= 8) {
+    const edges = { x0: [], y0: [], x1: [], y1: [] }
+    let hitFrames = 0
+    for (const f of files) {
+      const img = load(f)
+      const mk = maskOf(img, merged)
+      if (mk.n < 8) continue
+      hitFrames++
+      const tt = tighten(img, merged).box
+      for (const k of ['x0', 'y0', 'x1', 'y1']) edges[k].push(tt[k])
+    }
+    const q = (arr, p) => {
+      if (!arr.length) return NaN
+      const s = arr.slice().sort((a, b) => a - b)
+      return s[Math.min(s.length - 1, Math.max(0, Math.round((s.length - 1) * p)))]
+    }
+    if (hitFrames >= 5) {
+      console.log(`\n=== 稳定性（${hitFrames}/${files.length} 帧有信号，逐帧紧框的分位）===`)
+      console.log('         p10      p50      p90      极差')
+      for (const k of ['x0', 'y0', 'x1', 'y1']) {
+        const a = edges[k]
+        const spread = q(a, 1) - q(a, 0)
+        console.log(`  ${k}  ${q(a, 0.1).toFixed(3)}    ${q(a, 0.5).toFixed(3)}    ${q(a, 0.9).toFixed(3)}    ${spread.toFixed(3)}${spread > 0.02 ? '  ⚠️漂' : ''}`)
+      }
+      console.log(`  ⇒ ${q(edges.y1, 0.9) - q(edges.y0, 0.1) > 0.03 ? '⚠️ 上下抖动大，这个框不适合当常量' : '上下很稳，可以当常量'}`)
+    }
+  }
+
   // 关键对比：**在整批帧上**分别量旧框和新框 —— 只看第一帧会得出 0.00% 对 0.00% 这种废话
   if (SIGNAL === 'yellow') {
     const stat = (box) => {
