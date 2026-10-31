@@ -2454,6 +2454,26 @@ console.log('\n[6] 自主连玩策略')
         checked > 0 && bad.length === 0,
         checked === 0 ? '一行都没解析到（表格格式变了？）' : bad.join('; '))
     }
+    // 注释里写的二项概率必须跟公式算出来的一致。
+    // 起因（2026-10-31 检查会话抓到）：注释写「40 次不中概率 0.14%」，
+    // 但按当时的权重 (1-10/68)^40 = 0.172%（按 15% 近似也有 0.150%），两个都不是 0.14%。
+    // 根因是混了口径：拿降权后实测的 15.06% 算 0.8494^40 得 0.146%，又错写成 0.14%。
+    // 现在只要注释里写了「(1 - a/b)^n = **X%**」，就复算一遍 X。
+    {
+      const src = fsSync.readFileSync(new URL('./lib/autoplay.mjs', import.meta.url), 'utf8')
+      const bad = []
+      let seen = 0
+      for (const m of src.matchAll(/\(1\s*-\s*(\d+)\s*\/\s*(\d+)\)\^(\d+)\s*=\s*\*\*([\d.]+)%\*\*/g)) {
+        const [, a, b, n, claimed] = m
+        const real = Math.pow(1 - Number(a) / Number(b), Number(n)) * 100
+        seen++
+        // 容差 0.02 个百分点：允许「0.172 → 0.17」这种四舍五入
+        if (Math.abs(real - Number(claimed)) > 0.02) {
+          bad.push(`(1-${a}/${b})^${n} 实算 ${real.toFixed(3)}%，注释写 ${claimed}%`)
+        }
+      }
+      ok('注释里的二项概率跟公式对得上', bad.length === 0, bad.join('; ') || `验了 ${seen} 处`)
+    }
     // 分段托管的两条硬约束（2026-10-31 实测得来）：
     //   ① 段末必须**先抓帧再按 Esc** —— 暂停后所有判据读 0.00%（实测），反了就只剩压暗图
     //   ② 下一段开始要自己从暂停菜单恢复，否则会在菜单里瞎跑一整段
