@@ -20,6 +20,7 @@ import { summarizeRun, describeCombat } from './lib/autoplay.mjs'
 // 批量动作：把「一串动作」压进一次工具调用，省掉中间的模型往返（每次 6~12 秒）
 import { parseActionSpec, MAX_SEQUENCE } from './lib/control.mjs'
 import { registerIceyDev } from './lib/devtool.mjs'
+import { markLoaded } from './lib/devctl.mjs'
 
 export const name = 'dsh-icey-agent'
 export const inject = ['tools', 'attachments']
@@ -151,6 +152,11 @@ let pluginCtx = null
 
 export function apply(ctx) {
   pluginCtx = ctx
+  // 🔴 2026-10-31：刷新「装载时刻」基准。`icey_dev stamp` 靠它判断「文件是不是比代码新」，
+  //    而它原来是个模块顶层常量 —— ESM 按 URL 缓存，插件重载时未必重新求值，
+  //    于是基准永远停在首次装载，stamp 就一直误报「N 个文件装载之后才改」。
+  //    apply() 是插件被启用的入口，一定会重新执行，所以在这儿打点最靠得住。
+  markLoaded()
   const tool = (spec) => ctx.effect(() => ctx.tools.register(defineTool({
     ...spec,
     parameters: parametersForDefineTool(spec.parameters, localFallback),
