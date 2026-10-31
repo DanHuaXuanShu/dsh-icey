@@ -685,7 +685,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, VFX_SKIP_TOP, PROMPT_BOX, bossBarFraction, classifyOutcome, RUN_STATUS, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO, FIGHT_MOTION, FIGHT_ACTIVE_RATIO, HUD_GONE_READING, HUD_GONE_FRAMES } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, VFX_SKIP_TOP, PROMPT_BOX, bossBarFraction, classifyOutcome, RUN_STATUS, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO, FIGHT_MOTION, FIGHT_ACTIVE_RATIO, HUD_GONE_READING, HUD_GONE_FRAMES } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -1899,7 +1899,12 @@ console.log('\n[6] 自主连玩策略')
   // 2026-10-31 改：读不到 HUD 时**要**计入「没进展」——
   //   在看不见的界面上空转不该被当成正常状态一直跑下去（死亡菜单/过场都算）。
   ok('没有 HUD 时会累积「没进展」，不会无限空转', p14.stillStreak > 0, String(p14.stillStreak))
-  ok('启动阶段的确认键上限比游戏中宽', MAX_BOOT_INTERACTS > MAX_INTERACTS, `${MAX_BOOT_INTERACTS} vs ${MAX_INTERACTS}`)
+  // 2026-10-31 删掉一条假断言：「启动阶段的确认键上限比游戏中宽」
+  //   （原本是 ok(MAX_BOOT_INTERACTS > MAX_INTERACTS)）。
+  //   no-HUD 分支改成「一下都不按、只 wait」之后，MAX_BOOT_INTERACTS 就没人用了，
+  //   那条断言变成了只验 6 > 3 的空转，却会让人以为「启动阶段有独立确认键上限」这个机制还在。
+  //   真正的不变量已经被上面几条（没有 HUD → wait）、以及 873-877 那组守住。
+  //   守着一个不存在的东西，比没有断言更糟。
 
   // ㉔ 输入法：中文模式下字母键和方向键会被输入法截给候选框，只剩 esc/enter 能进游戏。
   //    2026-10-27 实机踩到 —— 表现是「能开暂停菜单但完全不能移动」，看着像游戏锁了移动。
