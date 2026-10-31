@@ -33,6 +33,7 @@ export const inject = ['tools', 'attachments']
 export const TOOL_NAMES = [
   'icey_start', 'icey_status', 'icey_look', 'icey_screenshot', 'icey_act',
   'icey_playbook', 'icey_auto', 'icey_play', 'icey_stop', 'icey_dev',
+  'icey_doctor',
 ]
 
 const hostDeps = await loadHostDeps()
