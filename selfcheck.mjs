@@ -2324,6 +2324,33 @@ console.log('\n[6] 自主连玩策略')
       const uRow = rdSrc.split('\n').find((l) => /^\|\s*追击/.test(l)) || ''
       ok('README 招式表写明 U 不索敌', /不索敌|不是索敌键/.test(uRow), uRow.slice(0, 80))
     }
+    // README 漂移守门（第二轮，2026-10-31）。
+    // 起因：一天里在同一类坑上栽了三次 —— U 键假描述、05763a9 漏改 README、
+    // 工具数/版本号/连段表全都落后于代码。
+    // 光靠「记得同步文档」不管用，得让自检去比两个地方的数字。
+    {
+      const rdSrc = fsSync.readFileSync(new URL('./README.md', import.meta.url), 'utf8')
+      const agentSrc = fsSync.readFileSync(new URL('./agent.js', import.meta.url), 'utf8')
+      // ① 工具数：README 标题说的数字必须等于 TOOL_NAMES 里的真数
+      const toolBlock = agentSrc.match(/export const TOOL_NAMES = \[([\s\S]*?)\n\]/)
+      const toolNames = toolBlock ? [...toolBlock[1].matchAll(/'([a-z0-9_]+)'/g)].map((m) => m[1]) : []
+      const claimed = rdSrc.match(/## 给 agent 的 (\d+) 个工具/)
+      ok('README 的工具数 = TOOL_NAMES 的长度',
+        !!claimed && Number(claimed[1]) === toolNames.length,
+        `README 说 ${claimed ? claimed[1] : '没写'}，TOOL_NAMES 有 ${toolNames.length} 个`)
+      // ② 每个工具在 README 里都要有一行说明（缺了就是「加了功能没写文档」）
+      const noDoc = toolNames.filter((n) => !rdSrc.includes('`' + n + '`'))
+      ok('每个 icey_* 工具都在 README 里出现过', noDoc.length === 0, noDoc.join(', '))
+      // ③ README 里写的空中连段必须真实存在于 COMBO_WEIGHTS（防「文档写了代码里没有」）
+      const ghost = [...rdSrc.matchAll(/`(k\\?\|[a-z|]+)`/g)]
+        .map((m) => m[1].replace(/\\/g, ''))
+        .filter((k) => !(k in COMBO_WEIGHTS))
+      ok('README 里写的空中连段都真实存在', ghost.length === 0, ghost.join(', '))
+      // ④ 版本号：README 顶部要提到 package.json 的主次版本（0.9.x 里的 0.9）
+      const pkg = JSON.parse(fsSync.readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+      const mm = pkg.version.split('.').slice(0, 2).join('\\.')
+      ok('README 顶部提到当前主次版本号', new RegExp(mm).test(rdSrc), `package.json 是 ${pkg.version}`)
+    }
     // 分段托管的两条硬约束（2026-10-31 实测得来）：
     //   ① 段末必须**先抓帧再按 Esc** —— 暂停后所有判据读 0.00%（实测），反了就只剩压暗图
     //   ② 下一段开始要自己从暂停菜单恢复，否则会在菜单里瞎跑一整段
