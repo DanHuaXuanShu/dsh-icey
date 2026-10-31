@@ -20,6 +20,7 @@ import { summarizeRun, describeCombat } from './lib/autoplay.mjs'
 // 批量动作：把「一串动作」压进一次工具调用，省掉中间的模型往返（每次 6~12 秒）
 import { parseActionSpec, MAX_SEQUENCE } from './lib/control.mjs'
 import { registerIceyDev } from './lib/devtool.mjs'
+import { makeItem, renderDoctor, DIAG_LEVEL } from './lib/doctor.mjs'
 import { markLoaded } from './lib/devctl.mjs'
 
 export const name = 'dsh-icey-agent'
@@ -258,6 +259,115 @@ export function apply(ctx) {
     async execute() {
       const st = await session().status()
       return { text: describeStatus(st) }
+    },
+  })
+
+  /* ---------------- 2b. 体检 ---------------- */
+
+  tool({
+    name: 'icey_doctor',
+    description:
+      '体检：回答「现在按下去，它到底能不能动；不能的话缺哪一样」。\n'
+      + '跟 icey_status 的区别：status 说「现在是什么状态」，doctor 说「够不够用、差什么」。\n'
+      + '四档结论：就绪 / 有风险 / 缺失 / 阻断。总结论取最坏那一档 —— 有一项阻断就是跑不了。\n'
+      + '🔴 只读：不改设置、不抢前台、不发任何按键。只抓一帧看画面。\n'
+      + '什么时候用：icey_play 跑不起来、或者它总在某个地方失灵时，先体检再猜。',
+    parameters: {},
+    output: textOutput,
+    async execute() {
+      const s = session()
+      const st = await s.status()
+      const items = []
+      const cfg = st.config || {}
+
+      // ① 游戏窗口
+      if (!st.running) {
+        items.push(makeItem(
+          'window', '游戏窗口', DIAG_LEVEL.blocked,
+          '没接上《艾希》',
+          'icey_start（attach 模式接已经开着的窗口；游戏没开就先打开它）',
+        ))
+        // 没接上就测不了抓帧/判据，但设置还是能查
+        items.push(makeItem(
+          'allowFocus', '前台策略', cfg.allowFocus === false ? DIAG_LEVEL.risk : DIAG_LEVEL.ready,
+          cfg.allowFocus === false
+            ? 'allowFocus 关着：游戏不在前台时按键送不进去'
+            : '允许自动抢前台（SendInput 只对前台窗口有效，这个开关是对的）',
+          '打开设置里的 allowFocus',
+        ))
+        // 没接上时只列得出这两项 —— 说清后面还有什么，不然会被误以为体检就这么点内容
+        return {
+          text: renderDoctor(items)
+            + '\n\n（游戏接上后还会检查：抓帧能不能抓到、画面是不是 16:9、HUD 判据认不认得出。）',
+        }
+      }
+      items.push(makeItem('window', '游戏窗口', DIAG_LEVEL.ready,
+        `已接上（hwnd ${st.hwnd}，pid ${st.pid ?? '?'}）`))
+
+      // ② 可操作性 —— 这是「能不能动手」的硬条件
+      const h = st.health || {}
+      if (h.playable) {
+        items.push(makeItem('playable', '可操作', DIAG_LEVEL.ready, '现在可以操作'))
+      } else if (h.minimized) {
+        items.push(makeItem('playable', '可操作', DIAG_LEVEL.blocked, '游戏窗口被最小化了',
+          '点任务栏把它调出来；实测它一般十几秒会自己还原'))
+      } else {
+        items.push(makeItem('playable', '可操作', DIAG_LEVEL.risk,
+          h.reason || '现在不能操作（原因未给出）',
+          cfg.allowFocus === false ? '打开 allowFocus，或自己把游戏窗口切到前面' : '把游戏窗口切到前面'))
+      }
+
+      // ③ 抓帧 + 窗口尺寸 + 判据 —— 一次 look 全拿到
+      let frame = null
+      try {
+        frame = await s.look({ maxWidth: 640 })
+      } catch (e) {
+        frame = null
+        items.push(makeItem('grab', '抓帧', DIAG_LEVEL.blocked,
+          `抓不到画面：${String(e?.message || e)}`, '确认游戏窗口没被遮挡，然后重开游戏试试'))
+      }
+      if (frame) {
+        const fw = frame.width || 0
+        const fh = frame.height || 0
+        const gw = frame.health?.width || fw
+        const ratio = fh > 0 ? fw / fh : 0
+        items.push(makeItem('grab', '抓帧', DIAG_LEVEL.ready,
+          `${fw}x${fh}${gw && gw !== fw ? `（窗口 ${gw}）` : ''}`))
+
+        // 16:9 是所有框坐标的前提：不是 16:9 的话，血条/提示框/连击区全会偏
+        const is169 = Math.abs(ratio - 16 / 9) < 0.02
+        items.push(makeItem(
+          'aspect', '画面比例', is169 ? DIAG_LEVEL.ready : DIAG_LEVEL.blocked,
+          `${ratio.toFixed(3)}${is169 ? '（16:9，坐标前提满足）' : '（不是 16:9 —— 所有框坐标都会偏）'}`,
+          '把游戏设成 16:9（推荐 1600x900 或 1920x1080 窗口化）',
+        ))
+
+        // 判据认得出来吗：HUD 亮度是「血条那一带有没有东西」的证据
+        const m = frame.metrics || {}
+        const hudBright = typeof m.hudBright === 'number' ? m.hudBright : null
+        if (hudBright === null) {
+          items.push(makeItem('hud', 'HUD 判据', DIAG_LEVEL.risk, '这一帧没算出 HUD 指标',
+            '再体检一次；一直这样的话说明抓帧路径有问题'))
+        } else if (hudBright < 0.02) {
+          items.push(makeItem('hud', 'HUD 判据', DIAG_LEVEL.risk,
+            `HUD 那一带几乎是空的（亮度读数 ${(hudBright * 100).toFixed(1)}%）`,
+            '可能不在游戏里（菜单/加载/过场）。回到游戏画面再体检一次'))
+        } else {
+          items.push(makeItem('hud', 'HUD 判据', DIAG_LEVEL.ready,
+            `血条区读得到（亮度读数 ${(hudBright * 100).toFixed(1)}%）`))
+        }
+      }
+
+      // ④ 前台策略
+      items.push(makeItem(
+        'allowFocus', '前台策略', cfg.allowFocus === false ? DIAG_LEVEL.risk : DIAG_LEVEL.ready,
+        cfg.allowFocus === false
+          ? 'allowFocus 关着：游戏一旦不在前台，按键就送不进去（而它随时可能被别的窗口抢走）'
+          : '允许自动抢前台（SendInput 只对前台窗口有效，这个开关是对的）',
+        '打开设置里的 allowFocus',
+      ))
+
+      return { text: renderDoctor(items) }
     },
   })
 

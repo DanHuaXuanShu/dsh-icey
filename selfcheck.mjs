@@ -1458,12 +1458,47 @@ console.log('\n[6] 自主连玩策略')
         stopped: '玩满 60 秒',
         combat: { bossBarSeen: true, bossBarWipes: 2, bossBarMin: 0.4 },
       }) === RUN_STATUS.completed, '')
-    // 成绩单第一行必须是分档
+  // 体检：四档徽章（架构参考 dsh-game-daily）
+  {
+    // 先补回结局分档那条：成绩单第一行必须是分档
     const statusLine = summarizeRun({
       seconds: 5, preset: 'advance', actions: {}, events: [], frames: 0, stopped: '玩满 5 秒',
     })
     ok('成绩单第一行写着结局分档', /^【完成】/.test(statusLine), statusLine.split('\n')[0])
+    const { makeItem, worstLevel, countByLevel, renderDoctor, DIAG_LEVEL } = await import('./lib/doctor.mjs')
+    ok('体检：总结论取最坏那一档',
+      worstLevel([
+        makeItem('a', '甲', DIAG_LEVEL.ready, ''),
+        makeItem('b', '乙', DIAG_LEVEL.blocked, ''),
+        makeItem('c', '丙', DIAG_LEVEL.risk, ''),
+      ]) === DIAG_LEVEL.blocked, '')
+    ok('体检：没有阻断时取次坏的',
+      worstLevel([
+        makeItem('a', '甲', DIAG_LEVEL.ready, ''),
+        makeItem('c', '丙', DIAG_LEVEL.risk, ''),
+      ]) === DIAG_LEVEL.risk, '')
+    ok('体检：空列表算就绪', worstLevel([]) === DIAG_LEVEL.ready, '')
+    const cnt = countByLevel([
+      makeItem('a', '', DIAG_LEVEL.ready, ''), makeItem('b', '', DIAG_LEVEL.ready, ''),
+      makeItem('c', '', DIAG_LEVEL.missing, ''), makeItem('d', '', DIAG_LEVEL.blocked, ''),
+    ])
+    ok('体检：各档计数正确', cnt.ready === 2 && cnt.missing === 1 && cnt.blocked === 1 && cnt.risk === 0, JSON.stringify(cnt))
+
+    const text = renderDoctor([
+      makeItem('ok1', '游戏窗口', DIAG_LEVEL.ready, '已接上'),
+      makeItem('bad', '画面比例', DIAG_LEVEL.blocked, '1.6（不是 16:9）', '把游戏设成 16:9'),
+      makeItem('warn', '前台策略', DIAG_LEVEL.risk, 'allowFocus 关着', '打开 allowFocus'),
+    ])
+    ok('体检：第一行给总结论', /^《艾希》插件体检：阻断/.test(text), text.split('\n')[0])
+    ok('体检：阻断项排在就绪项前面',
+      text.indexOf('画面比例') < text.indexOf('游戏窗口'), '')
+    ok('体检：非就绪项带「→ 下一步」', /→ 把游戏设成 16:9/.test(text) && /→ 打开 allowFocus/.test(text), '')
+    ok('体检：有阻断时结语是「跑不起来」', /跑不起来/.test(text), '')
+    const okText = renderDoctor([makeItem('ok1', '游戏窗口', DIAG_LEVEL.ready, '已接上')])
+    ok('体检：全绿时结语说可以跑', /全部就绪/.test(okText) && !/→/.test(okText), '')
+    ok('体检：空列表不崩，且说明这本身不对', /没有任何检查项/.test(renderDoctor([])), '')
   }
+  } // ← 关闭上面那个从「Boss 血条」开始的大块（2026-10-31 补：加体检断言时漏了这一个）
 
   // ㉘ 预警闪避：亮闪≥VFX_DANGER 就先闪。
   //
