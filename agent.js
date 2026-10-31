@@ -738,6 +738,14 @@ export function apply(ctx) {
       maxFrames: { type: 'integer', description: '最多留几张截图（0–4，默认 3；每张都花 token）' },
       dir: { type: 'string', description: '推进方向 right / left，默认 right' },
       historyLen: { type: 'integer', description: '带回来多少条「最近动作」历史（0–20，默认 8；0 = 不带）' },
+      pauseAtEnd: {
+        type: 'boolean',
+        description: 'true = 跑完这一段就按 Esc 把游戏停住，把画面交回给你（分段托管）。'
+          + '段末那一帧会在暂停**之前**抓下来，所以血/盾/连击/Boss 血条的读数都在 '
+          + '—— 暂停之后这些全都读不到（实测全 0.00%）。'
+          + '下一次 icey_play 会自动从暂停菜单恢复，不用手动按 Esc。'
+          + '典型用法：{seconds:15, pauseAtEnd:true} 跑一段 → 看图 → 再跑一段。',
+      },
       brief: {
         type: 'boolean',
         description: 'true = 不带截图，只回结构化事件摘要 + 指标（省 token，适合「先跑一段看看情况」）。'
@@ -858,6 +866,8 @@ export function apply(ctx) {
         maxFrames: brief ? 0 : args.maxFrames,
         dir: args.dir,
         historyLen: args.historyLen,
+        // 分段托管：跑完这一段就按 Esc 停住，把画面交回模型（下一段开头会自动恢复）
+        pauseAtEnd: args.pauseAtEnd,
       })
       if (!res.ok) {
         return { text: `连玩没开始：${res.error}\n下一步：icey_status 看能不能操作，或 icey_start 先接上。`, image: null }
@@ -894,6 +904,23 @@ export function apply(ctx) {
       // 多图很吃 token，而这一轮的主要信息在摘要里。
       let image = null
       let extraImage = null
+      // 段末暂停前那一帧（带完整指标）—— 分段托管的关键。
+      // 暂停之后所有判据都读 0（实测全 0.00%），唯独这一帧是暂停前抓的，所以读数都能用。
+      if (res.checkpoint) {
+        try {
+          const [ref] = await ctx.attachments.saveImages([{
+            data: res.checkpoint.png, mediaType: 'image/png', name: 'icey-checkpoint',
+          }])
+          const cm = res.checkpoint.metrics || {}
+          const f = (v) => (typeof v === 'number' ? `${(v * 100).toFixed(1)}%` : '—')
+          const boss = typeof cm.bossBar === 'number' ? ` · Boss 血条 ${f(cm.bossBar)}` : ' · 无 Boss 血条'
+          lines.push(
+            `段末画面（暂停**之前**抓的，指标有效）：血 ${f(cm.hp)} · 盾 ${f(cm.shield)} · 连击区 ${f(cm.combo)}${boss}`,
+            '游戏现在已暂停。看一眼再决定下一步；下一次 icey_play 会自动恢复，不用手动按 Esc。',
+          )
+          if (!brief) image = ref
+        } catch { /* 存图失败不影响文字结论 */ }
+      }
       if (!brief && res.frames?.length) {
         try {
           const refs = await ctx.attachments.saveImages(

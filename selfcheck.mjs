@@ -2303,6 +2303,19 @@ console.log('\n[6] 自主连玩策略')
       /retriedAfterFocus/.test(gmSrc) && /backend\.focus\(this\.hwnd\)/.test(gmSrc), '')
     ok('规则卡写明「自动切英文要求游戏在前台」',
       /要求游戏窗口在前台|不在前台时自动切不生效/.test(pbSrc), '')
+    // 分段托管的两条硬约束（2026-10-31 实测得来）：
+    //   ① 段末必须**先抓帧再按 Esc** —— 暂停后所有判据读 0.00%（实测），反了就只剩压暗图
+    //   ② 下一段开始要自己从暂停菜单恢复，否则会在菜单里瞎跑一整段
+    {
+      const iGrab = gmSrc.indexOf('checkpointShot = {')
+      const iNeed = gmSrc.indexOf('const needPause')
+      const iEsc = gmSrc.indexOf("await this.backend.keydown('Escape')", iNeed)
+      ok('段末暂停：先抓帧、再按 Esc（顺序反了读数就全归零）',
+        iGrab > 0 && iEsc > iGrab, `抓帧@${iGrab} Esc@${iEsc}`)
+      ok('段末暂停：开跑前会检查是否卡在暂停菜单',
+        /pausedByPlugin/.test(gmSrc) && /inMenu/.test(gmSrc), '')
+      ok('段末暂停：play() 认 pauseAtEnd 这个选项', /const pauseAtEnd = !!opts\.pauseAtEnd/.test(gmSrc), '')
+    }
     // 2026-10-29 实测：一整局没满过血 → 基线学到 0.321 → 19.6% 报成 60.8%、残血判健康。
     const apSrc = fsSync.readFileSync(new URL('./lib/autoplay.mjs', import.meta.url), 'utf8')
     ok('血基线有托底（没满过血也不会被学得太低）',
