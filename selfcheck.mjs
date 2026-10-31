@@ -865,12 +865,16 @@ console.log('\n[6] 自主连玩策略')
   // ⑫ 没检测到 HUD（标题/加载）⇒ 按确认键，而不是继续空走 —— 2026-10-23 真机踩到的坑：
   //    标题界面有飘雪，motion 一直 1.5~2%，光靠 motion 永远等不到"卡住"。
   const p6 = createPolicy('advance')
+  // 2026-10-31 改：读不到 HUD 时**不再盲按确认键**。
+  //   实测踩到：角色死了，画面是「再次作战」死亡菜单，hudBright=0 跟黑屏过场一样，
+  //   旧逻辑在这上面按了 Enter —— 而那个菜单里 Enter 就是「再次作战」，会丢进度。
+  //   现在一律 wait，把判断交回在场的人（模型看一眼就知道该按什么）。
   const noHud1 = p6.decide({ motion: 0.02, hudKick: 0, hudBright: 0 }, { now: 0 })
-  ok('没有 HUD 时第一反应是按确认键', noHud1.action === 'interact', JSON.stringify(noHud1))
+  ok('没有 HUD 时第一反应是等，不是盲按确认键', noHud1.action === 'wait', JSON.stringify(noHud1))
   const noHud2 = p6.decide({ motion: 0.02, hudKick: 0, hudBright: 0 }, { now: 300 })
-  ok('确认键有节流，紧接着是等一等（不连点）', noHud2.action === 'wait', JSON.stringify(noHud2))
+  ok('没有 HUD 时也不连按（一直是 wait）', noHud2.action === 'wait', JSON.stringify(noHud2))
   const noHud3 = p6.decide({ motion: 0.02, hudKick: 0, hudBright: 0 }, { now: 2000 })
-  ok('节流过后会再次按确认键', noHud3.action === 'interact', JSON.stringify(noHud3))
+  ok('等了两秒之后仍然不按（读不到画面就不该动手）', noHud3.action === 'wait', JSON.stringify(noHud3))
 
   // ⑬ 有 HUD（在游戏里）时，同样的 motion 应该走正常推进逻辑
   const p7 = createPolicy('advance')
@@ -1890,7 +1894,9 @@ console.log('\n[6] 自主连玩策略')
     if (d.action === 'move' || d.action === 'heavy' || d.action === 'jump') stuckWhileBooting = true
   }
   ok('没有 HUD 时只按确认/等待，不进入脱困动作', !stuckWhileBooting, '出现了脱困动作')
-  ok('没有 HUD 时 stillStreak 不累积', p14.stillStreak === 0, String(p14.stillStreak))
+  // 2026-10-31 改：读不到 HUD 时**要**计入「没进展」——
+  //   在看不见的界面上空转不该被当成正常状态一直跑下去（死亡菜单/过场都算）。
+  ok('没有 HUD 时会累积「没进展」，不会无限空转', p14.stillStreak > 0, String(p14.stillStreak))
   ok('启动阶段的确认键上限比游戏中宽', MAX_BOOT_INTERACTS > MAX_INTERACTS, `${MAX_BOOT_INTERACTS} vs ${MAX_INTERACTS}`)
 
   // ㉔ 输入法：中文模式下字母键和方向键会被输入法截给候选框，只剩 esc/enter 能进游戏。
