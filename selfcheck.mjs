@@ -685,7 +685,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, VFX_SKIP_TOP, PROMPT_BOX, bossBarFraction, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO, FIGHT_MOTION, FIGHT_ACTIVE_RATIO, HUD_GONE_READING, HUD_GONE_FRAMES } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, VFX_SKIP_TOP, PROMPT_BOX, bossBarFraction, classifyOutcome, RUN_STATUS, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO, FIGHT_MOTION, FIGHT_ACTIVE_RATIO, HUD_GONE_READING, HUD_GONE_FRAMES } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -1417,6 +1417,52 @@ console.log('\n[6] 自主连玩策略')
       combat: { frames: 30 },
     })
     ok('没有 Boss 血条时成绩单不瞎报 Boss 战', !/Boss 战/.test(noBossReport), noBossReport)
+
+    // 结局五档：拿 game.mjs 里**真实的 stopped 文案**逐个验证分类
+    // （这组断言是「文案改了要回来改分类」的保险 —— 分类函数只在一处，但文案散在 game.mjs）
+    const cases = [
+      ['插件被停止', RUN_STATUS.aborted],
+      ['画面连续 12 帧完全不变（这期间按了 5 次键）—— 游戏大概率已无响应，不是卡住。停手把画面交回', RUN_STATUS.failed],
+      ['任务达成：已脱离战斗（画面里没敌人、没屏障），用时 42s', RUN_STATUS.completed],
+      ['抓帧失败：The value of "size" is out of range', RUN_STATUS.failed],
+      ['帧不可用', RUN_STATUS.failed],
+      ['手动停手（icey_play stop）', RUN_STATUS.aborted],
+      ['在场哨兵：模型已经 95 秒没参与（icey_act / icey_look），后台战斗自动停手', RUN_STATUS.aborted],
+      ['动作非法（jump）：boom', RUN_STATUS.failed],
+      ['画面一直停在菜单/强化界面：已按 3 次 Esc 仍未退出。为避免误按「升级」花钱，先停在这里，请人工确认界面状态。', RUN_STATUS.partial],
+      ['连着几轮都没进展：这里可能是一扇打不开的门、解谜或分支选择 —— 停下把画面交回，由模型/人来判断', RUN_STATUS.partial],
+      ['玩满 60 秒', RUN_STATUS.completed],
+    ]
+    let allGood = true
+    const wrong = []
+    for (const [text, want] of cases) {
+      const got = classifyOutcome({ stopped: text })
+      if (got !== want) { allGood = false; wrong.push(`${text.slice(0, 12)}…→${got}(要${want})`) }
+    }
+    ok('连玩的 11 种结束原因都能正确分档', allGood, wrong.join(' / '))
+    ok('带了 error 字段一律算失败',
+      classifyOutcome({ stopped: '玩满 30 秒', error: 'boom' }) === RUN_STATUS.failed, '')
+    // 这条是本轮的核心：跑满了、也一直在打，但 Boss 血条没动 —— 旧写法会报「完成」
+    ok('Boss 战血条没动 ⇒ 部分完成（不是完成）',
+      classifyOutcome({
+        stopped: '玩满 60 秒',
+        combat: { bossBarSeen: true, bossBarWipes: 0, bossBarMin: 1 },
+      }) === RUN_STATUS.partial, '')
+    ok('Boss 战打掉过血 ⇒ 不算部分完成',
+      classifyOutcome({
+        stopped: '玩满 60 秒',
+        combat: { bossBarSeen: true, bossBarWipes: 0, bossBarMin: 0.62 },
+      }) === RUN_STATUS.completed, '')
+    ok('Boss 战打空过一条血 ⇒ 完成',
+      classifyOutcome({
+        stopped: '玩满 60 秒',
+        combat: { bossBarSeen: true, bossBarWipes: 2, bossBarMin: 0.4 },
+      }) === RUN_STATUS.completed, '')
+    // 成绩单第一行必须是分档
+    const statusLine = summarizeRun({
+      seconds: 5, preset: 'advance', actions: {}, events: [], frames: 0, stopped: '玩满 5 秒',
+    })
+    ok('成绩单第一行写着结局分档', /^【完成】/.test(statusLine), statusLine.split('\n')[0])
   }
 
   // ㉘ 预警闪避：亮闪≥VFX_DANGER 就先闪。
