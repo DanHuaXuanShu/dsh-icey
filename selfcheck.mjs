@@ -77,6 +77,32 @@ console.log('\n[2] 像素加工')
   const c = cropRgba(src, 4, 4, 1, 1, 2, 2)
   eq('裁剪尺寸', [c.width, c.height, c.data.length], [2, 2, 16])
   ok('裁剪内容正确', c.data[0] === 100 && c.data[3] === 255)
+
+  // 🔴 2026-10-31 加：实机上线时抓帧连崩两次，这两组断言就是为了不再踩。
+  //
+  //   崩法一：ClientToScreen 的 _Inout_ POINT 在 koffi 下**不一定回填**，
+  //          pt.x 是 undefined ⇒ pt.x - wr.left = NaN ⇒ Math.round(NaN)=NaN
+  //          ⇒ Buffer.allocUnsafe(NaN) 抛
+  //          "The value of \"size\" is out of range ... Received NaN"。首帧直接抓不到。
+  //   崩法二：调用方写 cropBgra(raw, ...) 传了整个 {width,height,data} 对象，
+  //          而签名是 (src, sw, sh, x, y, w, h) —— 参数全部错位，报 src.copy is not a function。
+  //
+  //   崩法二靠改调用点解决；崩法一靠 cropRgba 里的有限性清洗兜住。下面守的就是那层清洗。
+  const badUndef = cropRgba(src, 4, 4, undefined, 0, 2, 2)
+  eq('裁剪：x=undefined 不崩（当成 0）', [badUndef.width, badUndef.height], [2, 2])
+  const badNaN = cropRgba(src, 4, 4, NaN, NaN, NaN, NaN)
+  eq('裁剪：全 NaN 不崩（退回全画面）', [badNaN.width, badNaN.height], [4, 4])
+  const badOob = cropRgba(src, 4, 4, 999, 999, 999, 999)
+  ok('裁剪：越界坐标被夹住而不是返回 0 尺寸',
+    badOob.width >= 1 && badOob.height >= 1, `${badOob.width}x${badOob.height}`)
+  // 实机真实尺寸：整窗 1606x935、客户区偏移 (2,31)、内容 1600x900
+  {
+    const big = Buffer.alloc(1606 * 935 * 4)
+    const live = cropRgba(big, 1606, 935, 2, 31, 1600, 900)
+    eq('裁剪：实机尺寸切出精确 1600x900（16:9）', [live.width, live.height], [1600, 900])
+    ok('裁剪：1600x900 是 16:9', Math.abs(live.width / live.height - 16 / 9) < 0.001,
+      (live.width / live.height).toFixed(4))
+  }
   const fit = fitWidth(src, 4, 4, 2)
   eq('fitWidth 缩小', [fit.width, fit.height], [2, 2])
   const same = fitWidth(src, 4, 4, 100)
@@ -679,8 +705,11 @@ console.log('\n[6] 自主连玩策略')
   // ③ HUD 区域变化会体现在 hudKick 上（血条在左上那一带）
   const hudFrame = mk(W, H, 100)
   // HUD 区域（按比例算）填亮色
+  // ⚠️ 2026-10-31：坐标必须跟着 HUD_BOX 走，不能写死。
+  //    HUD_BOX 从 0.08~0.20 迁到 0.047~0.171（抓帧裁掉了标题栏），
+  //    这里原来还按旧值涂，只重叠一部分 → hudBright 读到 0.75 而不是 1，被误判成"功能坏了"。
   const hx0 = Math.floor(W * 0.03), hx1 = Math.floor(W * 0.32)
-  const hy0 = Math.floor(H * 0.08), hy1 = Math.floor(H * 0.20)
+  const hy0 = Math.floor(H * 0.047), hy1 = Math.floor(H * 0.171)
   for (let y = hy0; y < hy1; y++) for (let x = hx0; x < hx1; x++) {
     const i = (y * W + x) * 4
     hudFrame[i] = 255; hudFrame[i + 1] = 255; hudFrame[i + 2] = 0
@@ -1318,8 +1347,10 @@ console.log('\n[6] 自主连玩策略')
   //    中位数一样 ⇒ 这条判据本身就弱，阈值按「代价不对称」定在 3%（TPR 10% / FPR 4.5%）。
   ok('VFX_DANGER 落在内容区尺度的合理区间（1.5%~5%）',
     VFX_DANGER > 0.015 && VFX_DANGER < 0.05, String(VFX_DANGER))
-  ok('亮闪必须跳过顶部标题栏那一条（否则常量会随窗口尺寸变含义）',
-    VFX_SKIP_TOP > 0.02 && VFX_SKIP_TOP < 0.08, String(VFX_SKIP_TOP))
+  // 🔴 2026-10-31 改：标题栏改成在**抓帧时裁掉**之后，二次跳过必须归零（否则重复裁剪）。
+  // 这条断言的含义也跟着变了：现在它守护的是「不要双重裁剪」，而不是「必须跳过标题栏」。
+  ok('标题栏已在抓帧时裁掉 ⇒ vfx 不再二次跳过顶部（防双重裁剪）',
+    VFX_SKIP_TOP === 0, String(VFX_SKIP_TOP))
   const pVfx = createPolicy('advance')
   const dVfx = pVfx.decide({ motion: 0.3, combo: 1, hudKick: 0.1, hudBright: 0.08, progress: 0.5, vfx: 0.07 }, { now: 0 })
   ok('亮闪升高时先闪避而不是硬打', dVfx.action === 'dash', JSON.stringify(dVfx))
