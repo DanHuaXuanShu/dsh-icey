@@ -2356,6 +2356,68 @@ console.log('\n[6] 自主连玩策略')
       const mm = pkg.version.split('.').slice(0, 2).join('\\.')
       ok('README 顶部提到当前主次版本号', new RegExp(mm).test(rdSrc), `package.json 是 ${pkg.version}`)
     }
+    // 代码卫生守门（2026-10-31 加）。
+    // 起因：no-HUD 分支改成「只 wait、一下都不按」之后，MAX_BOOT_INTERACTS 与 bootInteracts
+    // 变成死代码，而 selfcheck 里还留着一条断言在给它们站岗（只验 6 > 3）。
+    // 守着一个已经不存在的机制，比没有断言更糟 —— 它会让人以为那个机制还在。
+    // 所以直接查两件事：① 导出了却全项目没人引用 ② 变量只被赋值、从不读取。
+    {
+      const rootDir = new URL('./', import.meta.url)
+      const libDir = new URL('./lib/', import.meta.url)
+      const walk = (dir) => {
+        const out = []
+        for (const e of fsSync.readdirSync(dir, { withFileTypes: true })) {
+          const p = new URL(e.name + (e.isDirectory() ? '/' : ''), dir)
+          if (e.isDirectory()) out.push(...walk(p))
+          else if (/\.(mjs|js)$/.test(e.name)) out.push(p)
+        }
+        return out
+      }
+      const scanFiles = [
+        ...walk(libDir),
+        ...['index.js', 'agent.js', 'selfcheck.mjs'].map((n) => new URL('./' + n, import.meta.url)),
+        // probe/ 里的校准脚本也算「使用者」：findExecutePrompt / matchStation 这两个
+        // 检测器的阈值就是靠 probe-execute*.mjs / station-check.mjs 校准的，
+        // 它们虽然不被运行时代码引用，但**不是死代码**。
+        // 只把「谁在用」的范围放大到 probe，判定对象仍然只看 lib/。
+        ...walk(new URL('./probe/', import.meta.url)),
+      ].filter((u) => { try { return fsSync.existsSync(u) } catch { return false } })
+      // 剥掉注释再统计，否则注释里提到这个名字会被当成「有人在用」
+      const texts = new Map(scanFiles.map((u) => [u.href, fsSync.readFileSync(u, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')]))
+      const countWord = (name) => {
+        const re = new RegExp('\\b' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'g')
+        let n = 0
+        for (const t of texts.values()) n += (t.match(re) || []).length
+        return n
+      }
+      // ① 死导出：只有一个「export ... NAME」字样，全项目再没出现过
+      //    判定对象只看 lib/（运行时真的会被加载的东西）；probe 是实验区，不管。
+      const deadExports = []
+      for (const u of walk(libDir)) {
+        for (const m of texts.get(u.href).matchAll(/export\s+(?:const|let|var|function|async function)\s+([A-Za-z_$][\w$]*)/g)) {
+          if (countWord(m[1]) <= 1) deadExports.push(m[1])
+        }
+      }
+      ok('lib/ 里没有「导出了却没人用」的符号', deadExports.length === 0, deadExports.join(', '))
+      // ② 只写不读的 let：注意 x++ / x += 1 都算「读+写」，不能当成纯赋值
+      const deadLocals = []
+      for (const u of walk(libDir)) {
+        const src = texts.get(u.href)
+        if (!src) continue
+        for (const name of new Set([...src.matchAll(/\blet\s+([A-Za-z_$][\w$]*)\s*(?==|;|\n)/g)].map((m) => m[1]))) {
+          const occ = src.match(new RegExp('\\b' + name + '\\b', 'g')) || []
+          // 「纯赋值」的正则 \bNAME\s*= 也会匹配到**声明那一处**（let NAME = ...），
+          // 所以 occ 减 pureAssign 之后，剩下的正好是「读取」次数 —— 不能再额外减 1。
+          //（第一版又减了一次声明，导致 50 个变量被误判成死代码。判据自己写错了两轮才配对。）
+          const pureAssign = (src.match(new RegExp('\\b' + name + '\\s*=(?!=)', 'g')) || []).length
+          const reads = occ.length - pureAssign
+          if (reads <= 0) deadLocals.push(name)
+        }
+      }
+      ok('lib/ 里没有「只赋值、从不读取」的变量', deadLocals.length === 0, deadLocals.join(', '))
+    }
     // 分段托管的两条硬约束（2026-10-31 实测得来）：
     //   ① 段末必须**先抓帧再按 Esc** —— 暂停后所有判据读 0.00%（实测），反了就只剩压暗图
     //   ② 下一段开始要自己从暂停菜单恢复，否则会在菜单里瞎跑一整段
