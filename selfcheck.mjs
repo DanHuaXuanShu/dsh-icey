@@ -2311,6 +2311,19 @@ console.log('\n[6] 自主连玩策略')
       /retriedAfterFocus/.test(gmSrc) && /backend\.focus\(this\.hwnd\)/.test(gmSrc), '')
     ok('规则卡写明「自动切英文要求游戏在前台」',
       /要求游戏窗口在前台|不在前台时自动切不生效/.test(pbSrc), '')
+    // 文档漂移守门（2026-10-31 用户抓到的）：
+    //   05763a9「U 不是索敌键——撤掉 chase 的假描述」改了 HANDOFF / autoplay / control /
+    //   playbook / skill-audit / selfcheck 六个文件，**唯独漏了 README**。
+    //   结果用户读 README 以为 U 能追敌，实际代码里它只是「走一步 + 剑气」。
+    //   这种漏法只能靠检查文档来拦 —— 代码断言再多也发现不了「文档还在说旧话」。
+    {
+      const rdSrc = fsSync.readFileSync(new URL('./README.md', import.meta.url), 'utf8')
+      ok('README 里没有 Chase 的旧假描述（「拉近距离比走路快」）',
+        !/拉近距离比走路快/.test(rdSrc), '')
+      // README 提到 U 的招式表那一行必须标明它不索敌
+      const uRow = rdSrc.split('\n').find((l) => /^\|\s*追击/.test(l)) || ''
+      ok('README 招式表写明 U 不索敌', /不索敌|不是索敌键/.test(uRow), uRow.slice(0, 80))
+    }
     // 分段托管的两条硬约束（2026-10-31 实测得来）：
     //   ① 段末必须**先抓帧再按 Esc** —— 暂停后所有判据读 0.00%（实测），反了就只剩压暗图
     //   ② 下一段开始要自己从暂停菜单恢复，否则会在菜单里瞎跑一整段

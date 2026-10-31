@@ -127,7 +127,7 @@ D3D11 窗口用普通 `BitBlt` 会抓到**全黑**。必须 `PrintWindow(hwnd, d
 icey_act({ sequence: ["jjji", "move:right:400", "dash:up:200", "wait:150"] })
 ```
 
-**`combo` 打取消衔接（柔化）**，键位：`j`轻 `i`重 `l`处决 `u`追击 `o`冲刺 `k`跳
+**`combo` 打取消衔接（柔化）**，键位：`j`轻 `i`重 `l`处决 `u`剑气（非索敌） `o`冲刺 `k`跳
 `w/s/a/d`方向 `q`是 `e`否 `8/9`强化技 `|`分阶段。
 例：`jjjji`=颤振、`jjiii`=磁阱、`jjj|s+j`=小迭影收刀。
 
@@ -153,7 +153,7 @@ icey_act({ sequence: ["jjji", "move:right:400", "dash:up:200", "wait:150"] })
 | 空中下劈 | `空格 → S+I` | `AirAtkDown` |
 | 处决 | `L` | `Execute` → QTE + **子弹时间** `ExecuteTimeSlow` |
 | 闪现 / 冲刺 | `O`(+方向) | `FlashUp/Down/Left/Right`，二段 `DoubleFlash` / `DoubleFlashAir` |
-| 追击 | `U`(+方向) | `Chase` —— 朝敌人突进，**拉近距离比走路快** |
+| 追击 | `U`(+方向) | 内部动作名 `Chase`。⚠️ **U 不是索敌键**（2026-10-26 实测）：单按原地出剑气，不位移、不转身，不会朝敌人靠 |
 | 湍流 | `8` | `BladeStorm`（后期解锁）。**消耗生命换免疫**，性价比不如连段重击 |
 | 流场 | `9` | `ShadeAtk`（后期解锁）。同上 |
 
@@ -167,8 +167,11 @@ icey_act({ sequence: ["jjji", "move:right:400", "dash:up:200", "wait:150"] })
 另外挖到但还没接进自动连玩的：`CounterAttack`（反击）、`DefenseAir`（空中防御）、
 `HitArmor`（霸体）、`SpAttack`（特殊攻击）。
 
-**已经用上的**：`icey_play` 打架分支现在会用 **追击（U）拉距离**、**闪现（O）取消硬直**——
-以前只会走路靠近，慢得多。
+**已经用上的（但这里有过一处更正）**：`icey_play` 打架分支里那个「chase」是
+**朝当前方向走一步 + 点一下 U**，不是「朝敌人突进」——
+2026-10-26 实测 **U 不索敌、不转身**，位移全部来自按住的方向键（`05763a9`）。
+真正拉近距离的是那一步位移，U 那一下只多一道剑气。
+闪现（`O`）取消硬直是真的，这条没问题。
 
 **空战（0.7.0 补的）**：上面表里早就有「空中连段 = 空格 → J」，但自动连玩一直没用上 ——
 招式表里只有挑空（`w+j`）和斩落（`s+j`），**中间那段空中输出是空的**，等于空战只做了两头。
@@ -431,7 +434,7 @@ node probe/hud-probe.mjs           # 量 HUD 特征（调阈值时用）
 来自游戏自己的 PlayerPrefs（`HKCU\Software\Shanghai FantaBlade Network Technology Co., Ltd.\ICEY`），不是猜的：
 
 `W/S/A/D` 移动 · `J` 攻击 · `I` 重击 · `L` 处决 · `空格` 跳 · `Enter` 互动/确认 ·
-`Esc` 暂停 · `O` 闪现 · `U` 追击 · `8`/`9` 特殊技 · `Q` 对话选「是」 · `E` 对话选「否」
+`Esc` 暂停 · `O` 闪现 · `U` 剑气（**非索敌**，别当追击用） · `8`/`9` 特殊技 · `Q` 对话选「是」 · `E` 对话选「否」
 
 可以在配置的 `keyMap` 里改。
 
