@@ -2431,6 +2431,29 @@ console.log('\n[6] 自主连玩策略')
         SHIELD_BOX.x1 < 0.5,
         `shield.x1=${SHIELD_BOX.x1}`)
     }
+    // README 空战表里的权重数字必须等于 COMBO_WEIGHTS 的实际值。
+    // 起因（2026-10-31 检查会话发现）：注释写「低权重」，实际给了 3/4/3，
+    // README 表格抄的又是 3/4/3 —— 三处各说各的，改一处漏两处。
+    // 现在让自检去比「文档写的数」和「代码里的数」。
+    {
+      const rdSrc = fsSync.readFileSync(new URL('./README.md', import.meta.url), 'utf8')
+      const bad = []
+      let checked = 0
+      for (const line of rdSrc.split('\n')) {
+        // | `k\|jjjj\|o` | 空格跳 → … | 视频评论区 | 5 |
+        const m = line.match(/^\|\s*`([a-z0-9|+_\\]+)`\s*\|[^|]*\|[^|]*\|\s*(\d+)\s*\|\s*$/)
+        if (!m) continue
+        const key = m[1].replace(/\\/g, '')
+        const shown = Number(m[2])
+        const real = COMBO_WEIGHTS[key]
+        checked++
+        if (real === undefined) { bad.push(`${key} 不在 COMBO_WEIGHTS 里`); continue }
+        if (shown !== real) bad.push(`${key}: README 写 ${shown}、实际 ${real}`)
+      }
+      ok('README 空战表的权重 = COMBO_WEIGHTS 实际值',
+        checked > 0 && bad.length === 0,
+        checked === 0 ? '一行都没解析到（表格格式变了？）' : bad.join('; '))
+    }
     // 分段托管的两条硬约束（2026-10-31 实测得来）：
     //   ① 段末必须**先抓帧再按 Esc** —— 暂停后所有判据读 0.00%（实测），反了就只剩压暗图
     //   ② 下一段开始要自己从暂停菜单恢复，否则会在菜单里瞎跑一整段
