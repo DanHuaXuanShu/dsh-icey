@@ -1343,6 +1343,40 @@ console.log('\n[6] 自主连玩策略')
   // 有害的是把字幕文字圈进来（那会把「有旁白」误判成「有互动提示」）。
   ok('PROMPT_BOX 别圈到字幕文字（实测在 0.90 以上）',
     PROMPT_BOX.y1 < 0.85, `y1=${PROMPT_BOX.y1}`)
+  // 🔴 2026-10-31 加：提示框是**跟着角色跑**的，横坐标必须覆盖角色在左/中/右三种位置。
+  //    实测：迷路森林（角色在右）提示框 x 0.73~0.84；选择之间（角色在中）x 0.45~0.555。
+  //    旧 x0=0.55 只跟后者重叠 5px，等于框不到 —— 这才是「有些地方死活开不了强化台」的原因。
+  ok('PROMPT_BOX 左边要够到角色居中时的提示框（x≈0.45）',
+    PROMPT_BOX.x0 <= 0.46, `x0=${PROMPT_BOX.x0}`)
+  ok('PROMPT_BOX 右边要够到角色靠右时的提示框（x≈0.84）',
+    PROMPT_BOX.x1 >= 0.85, `x1=${PROMPT_BOX.x1}`)
+
+  // 抓帧：黑帧重试 + 过场黑屏 vs 真故障的区分
+  {
+    const { grabFrame } = await import('./lib/vision.mjs')
+    const mkBackend = (seq, o = {}) => {
+      let i = 0
+      return {
+        async capture() {
+          const spec = seq[Math.min(i++, seq.length - 1)]
+          return spec === 'black'
+            ? { ok: true, width: 8, height: 8, data: Buffer.alloc(8 * 8 * 4) }
+            : { ok: true, width: 8, height: 8, data: Buffer.alloc(8 * 8 * 4, 200) }
+        },
+        async alive() { return { ok: true, alive: o.alive !== false, minimized: !!o.minimized } },
+        async find() { return { ok: true, found: true, foreground: o.foreground !== false } },
+      }
+    }
+    const r1 = await grabFrame(mkBackend(['black', 'black', 'ok']), 1)
+    ok('黑帧会重试：第 3 次正常就算成功', r1.ok === true && r1.health?.attempts === 3, JSON.stringify(r1.health))
+    const r2 = await grabFrame(mkBackend(['black']), 1)
+    ok('连续黑帧且窗口在前台 ⇒ 判为过场（blackout），不是故障', r2.ok === false && r2.blackout === true, String(r2.error))
+    ok('过场文案不误导成「最小化」', !/最小化/.test(r2.error || ''), r2.error)
+    const r3 = await grabFrame(mkBackend(['black'], { minimized: true }), 1)
+    ok('连续黑帧且窗口最小化 ⇒ 明说最小化', /最小化/.test(r3.error || ''), r3.error)
+    const r4 = await grabFrame(mkBackend(['black'], { alive: false }), 1)
+    ok('连续黑帧且窗口没了 ⇒ 说清窗口不在', /不在|关掉/.test(r4.error || ''), r4.error)
+  }
 
   // ㉘ 预警闪避：亮闪≥VFX_DANGER 就先闪。
   //
