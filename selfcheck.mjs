@@ -685,7 +685,7 @@ console.log('\n[5] Config 解析')
 /* ---------- 6. 自主连玩策略 ---------- */
 console.log('\n[6] 自主连玩策略')
 {
-  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, VFX_SKIP_TOP, PROMPT_BOX, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO, FIGHT_MOTION, FIGHT_ACTIVE_RATIO, HUD_GONE_READING, HUD_GONE_FRAMES } = await import('./lib/autoplay.mjs')
+  const { analyzeFrame, createPolicy, PRESETS, summarizeRun, STILL_MOTION, FIGHT_HUDKICK, PRESENCE_BRIGHT, PROGRESS_MIN, UNSTUCK_LADDER, MAX_INTERACTS, MAX_BOOT_INTERACTS, PROMPT_MIN, ACTION_WEIGHTS, SUBTITLE_MIN, pickWeighted, COMBOS, COMBO_WEIGHTS, analyzeEnvironment, DESTRUCT_SAT, SEAM_DIFF, VFX_DANGER, VFX_SKIP_TOP, PROMPT_BOX, bossBarFraction, createChestTracker, MENU_LIST_BANDS, MENU_DARK_RATIO, FIGHT_MOTION, FIGHT_ACTIVE_RATIO, HUD_GONE_READING, HUD_GONE_FRAMES } = await import('./lib/autoplay.mjs')
 
   // 造一帧：全填同一个颜色
   const mk = (w, h, v) => { const b = Buffer.alloc(w * h * 4, v); return b }
@@ -1376,6 +1376,47 @@ console.log('\n[6] 自主连玩策略')
     ok('连续黑帧且窗口最小化 ⇒ 明说最小化', /最小化/.test(r3.error || ''), r3.error)
     const r4 = await grabFrame(mkBackend(['black'], { alive: false }), 1)
     ok('连续黑帧且窗口没了 ⇒ 说清窗口不在', /不在|关掉/.test(r4.error || ''), r4.error)
+  }
+
+  // Boss 血条：从实机录像量的位置（1920x1080 上 y 0.904~0.912，x 0.184~0.813）
+  {
+    const mkBar = (W, H, l, r) => {
+      const buf = Buffer.alloc(W * H * 4)
+      const y0 = Math.floor(H * 0.901)
+      const y1 = Math.ceil(H * 0.914)
+      const xa = Math.floor(W * l)
+      const xb = Math.floor(W * r)
+      for (let y = y0; y < y1; y++) {
+        for (let x = xa; x < xb; x++) {
+          const i = (y * W + x) * 4
+          buf[i] = 220; buf[i + 1] = 30; buf[i + 2] = 40; buf[i + 3] = 255
+        }
+      }
+      return buf
+    }
+    const full = bossBarFraction(mkBar(1920, 1080, 0.184, 0.813), 1920, 1080)
+    ok('Boss 血条：满血读 100%', full !== null && Math.abs(full - 1) < 0.02, String(full))
+    const half = bossBarFraction(mkBar(1920, 1080, 0.184, 0.4985), 1920, 1080)
+    ok('Boss 血条：半血读 50%', half !== null && Math.abs(half - 0.5) < 0.03, String(half))
+    ok('Boss 血条：没有红条时返回 null', bossBarFraction(Buffer.alloc(1600 * 900 * 4), 1600, 900) === null, '')
+    // 左端校验：红块不在血条起点 ⇒ 不是血条（防止把受击红光/特效当成 Boss 血）
+    const offLeft = bossBarFraction(mkBar(1920, 1080, 0.45, 0.7), 1920, 1080)
+    ok('Boss 血条：红块左端不对时判为 null（不是血条）', offLeft === null, String(offLeft))
+    // 换分辨率仍要能用（实机抓帧可能是 1600x900 / 1280x720）
+    const small = bossBarFraction(mkBar(1280, 720, 0.184, 0.4985), 1280, 720)
+    ok('Boss 血条：1280x720 也读得出', small !== null && Math.abs(small - 0.5) < 0.04, String(small))
+    // 成绩单要说出「打掉了几条血」—— 用户第一次打犹大时，打了 300 秒血条一格不动，
+    // 托管当时完全没有手段知道这件事。
+    const bossReport = summarizeRun({
+      seconds: 30, preset: 'fight', dir: 'right', actions: {}, events: [], frames: 0, stopped: '跑满',
+      combat: { bossBarSeen: true, bossBarWipes: 2, bossBarMin: 0.15, frames: 30 },
+    })
+    ok('成绩单报告 Boss 战：说清打空几条血', /Boss 战/.test(bossReport) && /打空了 2 条血/.test(bossReport), bossReport)
+    const noBossReport = summarizeRun({
+      seconds: 30, preset: 'advance', dir: 'right', actions: {}, events: [], frames: 0, stopped: '跑满',
+      combat: { frames: 30 },
+    })
+    ok('没有 Boss 血条时成绩单不瞎报 Boss 战', !/Boss 战/.test(noBossReport), noBossReport)
   }
 
   // ㉘ 预警闪避：亮闪≥VFX_DANGER 就先闪。
