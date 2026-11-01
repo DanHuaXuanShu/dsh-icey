@@ -2474,6 +2474,27 @@ console.log('\n[6] 自主连玩策略')
       }
       ok('注释里的二项概率跟公式对得上', bad.length === 0, bad.join('; ') || `验了 ${seen} 处`)
     }
+    // 跨层接线守门（2026-11-01 检查会话抓到）。
+    // 踩的坑：win-backend 的方法表加了 `inputlang`，但 host.mjs **没暴露同名方法** →
+    //   game.mjs 调 this.backend.inputlang(...) 拿到 undefined，抛 TypeError 又被 catch {} 吞掉 →
+    //   status 的 inputLang 永远 null，而 commit message 里写着「现在能看到了」。
+    // 纯静态可查：win-backend 方法表 → host 同名方法 → game 调用参数形态，三层要对齐。
+    {
+      const wbSrc = fsSync.readFileSync(new URL('./lib/win-backend.mjs', import.meta.url), 'utf8')
+      const hostSrc = fsSync.readFileSync(new URL('./lib/host.mjs', import.meta.url), 'utf8')
+      const gameSrc = fsSync.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
+      // 正则只要求「inputlang: ({hwnd}」开头 —— 后面还有 `= {}` 默认值，
+      // 第一版写成 /\{hwnd\}/ 把右括号也钉死，结果方法明明在却判红。
+      ok('win-backend 方法表里有 inputlang', /inputlang:\s*\(\s*\{\s*hwnd\s*\}/.test(wbSrc), '')
+      ok('host.mjs 暴露了 inputlang（否则 game 调到的是 undefined）',
+        /async\s+inputlang\s*\(/.test(hostSrc), '')
+      ok('game.mjs 调 inputlang 用裸 hwnd（跟 ensureEnglishInput 同形态）',
+        /backend\.inputlang\(\s*(?:this\.)?hwnd\s*\)/.test(gameSrc),
+        '传 {hwnd} 对象的话 host 会把它当 hwnd 本身')
+      ok('读输入法布局失败时不静默吞（要带 error 出去）',
+        /inputlang\([\s\S]{0,160}?catch\s*\(\s*e\s*\)\s*\{\s*inputLang\s*=\s*\{\s*ok:\s*false/.test(gameSrc),
+        '失败必须返回 { ok:false, error }，不能 catch {} 了事')
+    }
     // 分段托管的两条硬约束（2026-10-31 实测得来）：
     //   ① 段末必须**先抓帧再按 Esc** —— 暂停后所有判据读 0.00%（实测），反了就只剩压暗图
     //   ② 下一段开始要自己从暂停菜单恢复，否则会在菜单里瞎跑一整段
