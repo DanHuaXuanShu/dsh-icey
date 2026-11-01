@@ -1,7 +1,8 @@
 /**
  * probe/keycap-diag.mjs —— 诊断：为什么这张帧没检出处决键帽
  *
- * 直接复用 lib/ui/execute-keycap.mjs 的谓词，把**每个**暗连通块的实测数字都打出来，
+ * 内联一份与 lib/ui/execute-keycap.mjs 同款的暗块/白字谓词（复制而非 import，方便单独调阈值），
+ * 把**每个**暗连通块的实测数字都打出来，
  * 再逐条标注它栽在哪一关。这样改门槛时是「看着真样本改」，不是拍脑袋。
  */
 import { readFileSync } from 'node:fs'
