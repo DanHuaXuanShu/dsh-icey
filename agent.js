@@ -22,6 +22,9 @@ import { parseActionSpec, MAX_SEQUENCE } from './lib/control.mjs'
 import { registerIceyDev } from './lib/devtool.mjs'
 import { makeItem, renderDoctor, DIAG_LEVEL } from './lib/doctor.mjs'
 import { markLoaded } from './lib/devctl.mjs'
+// 键盘布局那一句只在这里写一次。历史上它有过两个名字/两种形状，
+// 而且 status 对象里有字段、人话里没有 —— 详见 lib/inputlang.mjs 顶部。
+import { describeInputLang } from './lib/inputlang.mjs'
 
 export const name = 'dsh-icey-agent'
 export const inject = ['tools', 'attachments']
@@ -83,6 +86,10 @@ function describeStatus(st) {
     canAct
       ? '可以操作（按键会先把游戏抢到前台，会打断你正在做的事）。'
       : `现在不能操作：${st.health?.reason || '原因未知'}`,
+    // 🔴 2026-11-01：这一行以前**不存在**。status() 早就返回了 inputLang，但这里没读，
+    //   于是「数据到了」而「模型看不到」—— 自检全过、commit 说「能看到了」、实际一个字都没有。
+    //   「能操作」只看窗口在前台、抓不抓得到画面，跟按键进不进得去游戏是两件事。
+    describeInputLang(st.inputLang),
     st.queue ? `动作队列：${st.queue.depth} 个在等，已完成 ${st.queue.done}。` : '',
   ].filter(Boolean)
   // 后台战斗的运行态 + 上一场的结局（2026-10-27 加）。
@@ -180,7 +187,7 @@ export function apply(ctx) {
       '打开/接上《艾希 ICEY》，然后告诉你能不能操作、画面是什么样。\n'
       + '这是玩游戏的第一步，之后用 icey_look 看画面、icey_act 操作。\n'
       + 'launchMode：attach（默认，接上已经开着的窗口，最稳）/ steam（让 Steam 启动）/ direct（直接跑 exe）。\n'
-      + '接上时会自动把游戏线程切到英文键盘布局 —— 中文输入法在中文模式下会把字母键和方向键截给候选框，只剩 esc/enter 能进游戏（表现是「能开暂停菜单但走不动」）。切换结果在返回的 inputlang 里。\n'
+      + '接上时会自动把游戏线程切到英文键盘布局 —— 中文输入法在中文模式下会把字母键和方向键截给候选框，只剩 esc/enter 能进游戏（表现是「能开暂停菜单但走不动」）。切没切成功，返回的文字里会有一行「键盘布局：…」明说（不是返回某个 JSON 字段）。\n'
       + '返回：接上没接上、窗口信息、能不能操作（不能的话原因）、首帧截图。',
     parameters: {
       launchMode: {

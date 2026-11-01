@@ -677,8 +677,13 @@ node probe/tier-audit.mjs shots/combat3   # 空地负样本
 
 修法：接上游戏时把该窗口线程的键盘布局切到 en-US
 （`LoadKeyboardLayoutW('00000409', KLF_ACTIVATE)` → `AttachThreadInput` → `ActivateKeyboardLayout`
-→ 再补一条 `WM_INPUTLANGCHANGEREQUEST`）。`icey_start` 返回里的 `inputlang` 就是切换结果，
-窗口变了会重新切一次。
+→ 再补一条 `WM_INPUTLANGCHANGEREQUEST`）。`icey_start` / `icey_status` 返回的**文字**里会有一行
+`键盘布局：0x0409 英文…`（读不到、是中文分别有不同的措辞），窗口变了会重新切一次。
+
+> ⚠️ 2026-11-01 修过两处「看不见」：① `status()` 的 `inputLang` 字段曾经永远是 `null`
+> （host 层没暴露 `inputlang`，调用抛 TypeError 被 `catch {}` 吞了）；
+> ② 字段修好之后，`describeStatus` 压根没读它 —— 数据到了，模型还是看不到。
+> 现在形状和人话都只在 `lib/inputlang.mjs` 里定一次，别处不许自己拼。
 
 ### 其余已知问题
 

@@ -1919,7 +1919,7 @@ console.log('\n[6] 自主连玩策略')
   const imeGame = fsSync.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
   ok('接上游戏时会自动切英文', /await this\.wantEnglishInput\(\)/.test(imeGame), 'attach 里没调')
   ok('窗口变了会重新切英文', /if \(changed\) await this\.wantEnglishInput\(\)/.test(imeGame), 'ensureAttached 里没调')
-  ok('attach 返回值里带 inputlang', /health: this\.health, inputlang/.test(imeGame), '返回值没带 inputlang')
+  ok('attach 返回值里带 inputLang', /health: this\.health, inputLang/.test(imeGame), '返回值没带 inputLang（键名必须跟 status 一致）')
   const imeAgent = fsSync.readFileSync(new URL('./agent.js', import.meta.url), 'utf8')
   ok('icey_start 的描述提到了输入法', /输入法/.test(imeAgent), '描述没提')
   const imeBook = fsSync.readFileSync(new URL('./lib/playbook.mjs', import.meta.url), 'utf8')
@@ -2492,8 +2492,69 @@ console.log('\n[6] 自主连玩策略')
         /backend\.inputlang\(\s*(?:this\.)?hwnd\s*\)/.test(gameSrc),
         '传 {hwnd} 对象的话 host 会把它当 hwnd 本身')
       ok('读输入法布局失败时不静默吞（要带 error 出去）',
-        /inputlang\([\s\S]{0,160}?catch\s*\(\s*e\s*\)\s*\{\s*inputLang\s*=\s*\{\s*ok:\s*false/.test(gameSrc),
-        '失败必须返回 { ok:false, error }，不能 catch {} 了事')
+        /inputlang\([\s\S]{0,200}?catch\s*\(\s*e\s*\)\s*\{\s*inputLang\s*=\s*normalizeInputLang\(\s*\{\s*ok:\s*false,\s*error/.test(gameSrc),
+        '失败必须归一成 { ok:false, error } 带出去，不能 catch {} 了事')
+    }
+    // 呈现层接线（2026-11-01，检查会话挖出的第三段断点）。
+    // 踩的坑升级版：数据流修好了（win-backend → host → status.inputLang），
+    //   自检全过、commit 写着「现在能看到了」——**但模型看不到**。
+    //   因为 agent.js 的 describeStatus() 压根没读 st.inputLang。
+    //   「数据到了」≠「人看到了」。所以这里分两段守：① 字段有没有被渲染 ② 形状是不是只有一套。
+    {
+      const agentSrc = fsSync.readFileSync(new URL('./agent.js', import.meta.url), 'utf8')
+      const gameSrc2 = fsSync.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
+      const iStart = agentSrc.indexOf('function describeStatus(st)')
+      const iEnd = agentSrc.indexOf('function toSchema')
+      const body = iStart >= 0 && iEnd > iStart ? agentSrc.slice(iStart, iEnd) : ''
+      ok('describeStatus 真的读了 st.inputLang（否则模型看不到布局）',
+        /st\.inputLang/.test(body), '字段在 status 里躺着一百年，人话里一个字都没有')
+      ok('describeStatus 用统一的 describeInputLang 渲染（不自己拼）',
+        /describeInputLang\(/.test(body), '各拼各的 → 迟早两种说法')
+      ok('布局那句人话只由 lib/inputlang.mjs 提供',
+        /from '\.\/lib\/inputlang\.mjs'/.test(agentSrc) && /describeInputLang/.test(agentSrc),
+        'agent.js 必须从 lib/inputlang.mjs 取')
+      // 形状归一：小写 inputlang 不许再当返回字段用（它就是当年那一半病根）。
+      // 注意 `this.backend.inputlang(` 是 host 命令名，不算 —— 所以只查「后面跟逗号/右括号」的键名写法。
+      ok('返回字段统一叫 inputLang（小写 inputlang 只剩 host 命令名）',
+        !/[,{]\s*inputlang\s*[,}]/.test(gameSrc2) && !/const inputlang\s*=/.test(gameSrc2),
+        '两个名字两套形状，接上去的人必然读错字段')
+      ok('三个入口（attach / status / act）都过 normalizeInputLang',
+        (gameSrc2.match(/normalizeInputLang\(/g) || []).length >= 4,
+        '至少 attach、status、act、play 四处')
+      // 行为断言：**真跑函数**。光看代码长得对不算。
+      // 这条盯的是最阴的那处语义冲突：readInputLang 的中文布局返回 ok:true，
+      // 谁要是把原始 ok 抄进 canonical，中文布局就会被判成「没问题」——而这正是要报的坏事。
+      {
+        const { normalizeInputLang, describeInputLang } = await import('./lib/inputlang.mjs')
+        const en = normalizeInputLang({ ok: true, lang: 0x0409, hex: '0409', english: true })
+        ok('归一：英文布局 → ok:true', en.ok === true && en.hex === '0409' && en.observed === true, JSON.stringify(en))
+        const zh = normalizeInputLang({ ok: true, lang: 0x0804, hex: '0804', english: false })
+        ok('归一：中文布局虽是「读成功」也必须 ok:false（原始 ok 不许抄进来）',
+          zh.ok === false && zh.observed === true && zh.hex === '0804', JSON.stringify(zh))
+        const sw = normalizeInputLang({ ok: true, alreadyEnglish: false, switched: true, layoutBefore: 0x0804, layoutAfter: 0x0409 })
+        ok('归一：ensureEnglishInput 形状（未 english 字段）也能认出来',
+          sw.ok === true && sw.switched === true && sw.from === '0804', JSON.stringify(sw))
+        const bad = normalizeInputLang({ ok: false, error: 'LoadKeyboardLayout 失败', layoutBefore: 0x0804 })
+        ok('归一：切失败 → ok:false + error 带出来',
+          bad.ok === false && !!bad.error && bad.hex === '0804', JSON.stringify(bad))
+        const none = normalizeInputLang(null)
+        ok('归一：没数据 → observed:false（不许冒充「没问题」）',
+          none.observed === false && none.ok === false && none.english === null, JSON.stringify(none))
+        ok('人话里「读不到」和「中文」必须能分开',
+          describeInputLang(none).includes('读不到') && describeInputLang(zh).includes('0x0804')
+          && describeInputLang(en).includes('英文'),
+          '三种状态混成一句，模型就会把「没证据」当「没问题」')
+      }
+      // 文档跟着改 —— 同一天发现的另一类漂移：代码里字段改名了，文档还在教人读旧字段。
+      const rd = fsSync.readFileSync(new URL('./README.md', import.meta.url), 'utf8')
+      ok('README 不再说「返回里的 inputlang 就是切换结果」',
+        !/返回里的 `inputlang` 就是切换结果/.test(rd),
+        '字段已改叫 inputLang，而且渲染进人话了')
+      ok('README 说清了布局是「文字里的一行」',
+        /键盘布局：0x0409/.test(rd), '得让读的人知道去哪儿看')
+      const pb = fsSync.readFileSync(new URL('./lib/playbook.mjs', import.meta.url), 'utf8')
+      ok('规则卡不再教人去读「返回的 inputlang」',
+        !/返回的 `inputlang` 里说明/.test(pb), '那是旧路径，模型拿不到那个字段')
     }
     // 分段托管的两条硬约束（2026-10-31 实测得来）：
     //   ① 段末必须**先抓帧再按 Esc** —— 暂停后所有判据读 0.00%（实测），反了就只剩压暗图
