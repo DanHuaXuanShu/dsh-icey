@@ -1075,9 +1075,18 @@ console.log('\n[6] 自主连玩策略')
     const pf3 = mkPolicy('advance')
     const d3 = pf3.decide(fightFrame({ enemyDir: 'left' }), { now: 1000 })
     ok('看到敌人图标在左边就朝左转', d3.action === 'face' && d3.dir === 'left', `${d3.action}/${d3.dir}`)
-    // ④ 回归：连击数**读不到**时（战斗已结束 / HUD 没计数）绝对不能翻面。
+    // ④ 回归：连击数**读不到**时绝对不能乱翻面。
     //    2026-10-26 首跑就是这里错了：combo 读不到 ⇒ comboGainAt 永远停在过去
     //    ⇒ 每帧都算「停滞」⇒ 60 秒 face 了 26 次、人一步没走。
+    //
+    // 🔴 2026-11-01 放宽（不是降低标准，是判据变了）：
+    //    这条原来写 `faces4 === 0`，守的是「一次都不许翻」。那个标准在 10-26 成立，
+    //    因为当时唯一会给连击计时续命的就是「读到 combo」；读不到就永久停滞、永久翻。
+    //    现在 ①-a2 那条分支明确说了：连击消失 + 没有敌情箭头 = 真在打空气，**该翻一次**。
+    //    实测这条用例如今会翻 1 次（第 3.2 秒，stallMs 越过 FIGHT_STALL_MS*0.6 门槛后）。
+    //    那是**有理由的一次**，不是抽搐 —— 抽搐的形态是「每 1.2 秒一次、连翻十几次」。
+    //    所以判据从「0 次」改成「≤1 次」，仍然死死守住「不许乱翻」这个真正的意图。
+    //    ⚠️ 谁要把它改回 `=== 0`，得先解释 ①-a2 分支怎么在无箭头时自救。
     const pf4 = mkPolicy('advance')
     pf4.decide(fightFrame(), { now: 0 })          // 先真的进一次战斗
     const seq4 = []
@@ -1085,7 +1094,7 @@ console.log('\n[6] 自主连玩策略')
       seq4.push(pf4.decide({ motion: 0.3, hudKick: 0.1, hudBright: 0.08, progress: 0.5 }, { now: i * 800 }))
     }
     const faces4 = seq4.filter((d) => d.action === 'face').length
-    ok('连击数读不到时不会乱翻面（首跑 26 次抽搐的回归）', faces4 === 0, `face×${faces4}`)
+    ok('连击数读不到时最多只翻一次（首跑 26 次抽搐的回归）', faces4 <= 1, `face×${faces4}`)
     // ⑤ 2026-10-26 四轮真机：`foeDir` 几乎总是非空（金色强化台、左上护盾黄格、连击数字都是黄的），
     //    而原来「翻面」的前提写成了「`!foeDir`」⇒ 346 个动作一次都没翻过。
     //    现在放宽成「指针空 or 指针指着当前朝向」，这条才活得下来。
@@ -1100,14 +1109,22 @@ console.log('\n[6] 自主连玩策略')
     pf5b.decide(fightFrame({ enemyDir: 'right' }), { now: 0 })   // 朝向 right，指针也指 right
     const seq5b = []
     for (let i = 1; i <= 6; i++) {
-      seq5b.push(pf5b.decide(fightFrame({ enemyDir: 'right' }), { now: i * 800 }))
+      seq5b.push(pf5b.decide(fightFrame({ enemyDir: 'right', combo: 0 }), { now: i * 800 }))
     }
     ok('指针指着敌人时不会翻面背对它（改为朝那边走）',
       !seq5b.some((d) => d.action === 'face'),
       seq5b.map((d) => d.action).join(','))
-    ok('指针指着敌人时会朝那边走过去（这才是有用的反应）',
+    ok('连击没亮、画面外有敌人 → 朝箭头走过去接战',
       seq5b.some((d) => d.action === 'move' && d.dir === 'right'),
       seq5b.map((d) => `${d.action}${d.dir ? ':' + d.dir : ''}`).join(','))
+    // 新语义（2026-11-01）：combo 亮着 = 手上已经有敌人，这时朝箭头走 = 丢下眼前敌人跑去画面外。
+    const seq5c = []
+    for (let i = 1; i <= 6; i++) {
+      seq5c.push(pf5b.decide(fightFrame({ enemyDir: 'right', combo: 1 }), { now: i * 800 }))
+    }
+    ok('连击亮着时不朝箭头跑掉（手上已经有敌人）',
+      !seq5c.some((d) => d.action === 'move' && d.dir === 'right'),
+      seq5c.map((d) => `${d.action}${d.dir ? ':' + d.dir : ''}`).join(','))
     // ⑥ 处决节流：提示一直挂着，也不能每帧都按 L（键帽检测分不出 L/U/E，误判会锁死战斗）
     const pEx = mkPolicy('advance')
     const exSeq = []
@@ -2177,7 +2194,7 @@ console.log('\n[6] 自主连玩策略')
       for (let i = 0; i < 16; i++) {
         const d = pFoe.decide({
           motion: 0.02, hudKick: 0, hudBright: 0.08,
-          hp: 0.55, shield: 0.09, combo: 0.02, progress: 0,
+          hp: 0.55, shield: 0.09, combo: 0, progress: 0,
           enemyDir: 'left', barrier: true,
         }, { now: i * 700 })
         whys3.push(`${d.action}${d.dir ? ':' + d.dir : ''} | ${d.why || ''}`)
