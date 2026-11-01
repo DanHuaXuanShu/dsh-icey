@@ -1,5 +1,5 @@
 /**
- * probe/tool-check.mjs —— 真调 agent.js 注册出来的 6 个工具（桩 ctx，但抓帧/按键全是真的）
+ * probe/tool-check.mjs —— 真调 agent.js 注册出来的 11 个工具（桩 ctx，但抓帧/按键全是真的）
  * 这是「工具能不能用」最直接的验证：如果这里有输出 + 有图，宿主里就能用。
  */
 import { configure } from '../lib/session.mjs'

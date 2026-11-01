@@ -25,7 +25,7 @@ import { apply as applyAgentHalf, TOOL_NAMES } from './agent.js'
 export const name = 'dsh-icey'
 // 只用 connection（路由）。**不**注入 subprocess：那个服务会把它管理的进程在卸载时终止，
 // 拿它启动游戏 ⇒ 插件一重载就把用户的游戏杀了。启动游戏用 detached spawn（见下）。
-// agent 半（6 个工具）的 tools / attachments 也不写在这里 —— 见文件末尾那段说明：
+// agent 半（11 个工具）的 tools / attachments 也不写在这里 —— 见文件末尾那段说明：
 // 用 ctx.get() 探测，缺服务就只跳过工具，不让整条插件不激活。
 export const inject = ['connection']
 

@@ -64,7 +64,7 @@ const agentMod = await import('../agent.js').catch(() => ({}))
 const expectedTools = Array.isArray(agentMod.TOOL_NAMES) ? agentMod.TOOL_NAMES : []
 console.log('index.js 导入 OK；inject =', JSON.stringify(host.inject), '；Config =', host.Config ? '有' : '无')
 
-/* ---------- ① 正常部署：应有 12 条路由 + 6 个工具 ---------- */
+/* ---------- ① 正常部署：应有 12 条路由 + 11 个工具 ---------- */
 try {
   calls.routes.length = 0; calls.tools.length = 0; calls.effects.length = 0
   const ctx = makeCtx({ withTools: true })

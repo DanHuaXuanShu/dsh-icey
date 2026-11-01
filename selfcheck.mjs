@@ -2327,7 +2327,7 @@ console.log('\n[6] 自主连玩策略')
       ok('README 里没有 Chase 的旧假描述（「拉近距离比走路快」）',
         !/拉近距离比走路快/.test(rdSrc), '')
       // README 提到 U 的招式表那一行必须标明它不索敌
-      const uRow = rdSrc.split('\n').find((l) => /^\|\s*追击/.test(l)) || ''
+      const uRow = rdSrc.split('\n').find((l) => /^\|\s*虚像/.test(l)) || ''
       ok('README 招式表写明 U 不索敌', /不索敌|不是索敌键/.test(uRow), uRow.slice(0, 80))
     }
     // README 漂移守门（第二轮，2026-10-31）。
@@ -2377,11 +2377,6 @@ console.log('\n[6] 自主连玩策略')
       const scanFiles = [
         ...walk(libDir),
         ...['index.js', 'agent.js', 'selfcheck.mjs'].map((n) => new URL('./' + n, import.meta.url)),
-        // probe/ 里的校准脚本也算「使用者」：findExecutePrompt / matchStation 这两个
-        // 检测器的阈值就是靠 probe-execute*.mjs / station-check.mjs 校准的，
-        // 它们虽然不被运行时代码引用，但**不是死代码**。
-        // 只把「谁在用」的范围放大到 probe，判定对象仍然只看 lib/。
-        ...walk(new URL('./probe/', import.meta.url)),
       ].filter((u) => { try { return fsSync.existsSync(u) } catch { return false } })
       // 剥掉注释再统计，否则注释里提到这个名字会被当成「有人在用」
       const texts = new Map(scanFiles.map((u) => [u.href, fsSync.readFileSync(u, 'utf8')

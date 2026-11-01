@@ -134,7 +134,7 @@ D3D11 窗口用普通 `BitBlt` 会抓到**全黑**。必须 `PrintWindow(hwnd, d
 icey_act({ sequence: ["jjji", "move:right:400", "dash:up:200", "wait:150"] })
 ```
 
-**`combo` 打取消衔接（柔化）**，键位：`j`轻 `i`重 `l`处决 `u`剑气（非索敌） `o`冲刺 `k`跳
+**`combo` 打取消衔接（柔化）**，键位：`j`轻 `i`重 `l`处决 `u`虚像（条件技，非索敌） `o`冲刺 `k`跳
 `w/s/a/d`方向 `q`是 `e`否 `8/9`强化技 `|`分阶段。
 例：`jjjji`=颤振、`jjiii`=磁阱、`jjj|s+j`=小迭影收刀。
 
@@ -160,7 +160,7 @@ icey_act({ sequence: ["jjji", "move:right:400", "dash:up:200", "wait:150"] })
 | 空中下劈 | `空格 → S+I` | `AirAtkDown` |
 | 处决 | `L` | `Execute` → QTE + **子弹时间** `ExecuteTimeSlow` |
 | 闪现 / 冲刺 | `O`(+方向) | `FlashUp/Down/Left/Right`，二段 `DoubleFlash` / `DoubleFlashAir` |
-| 追击 | `U`(+方向) | 内部动作名 `Chase`。⚠️ **U 不是索敌键**（2026-10-26 实测）：单按原地出剑气，不位移、不转身，不会朝敌人靠 |
+| 虚像 | `U` | 条件技（敌人上方出现提示时按），内部动作名 `Chase`。⚠️ **U 不是索敌键**（2026-10-26 实测）：单按原地出剑气，不位移、不转身，不会朝敌人靠 |
 | 湍流 | `8` | `BladeStorm`（后期解锁）。**消耗生命换免疫**，性价比不如连段重击 |
 | 流场 | `9` | `ShadeAtk`（后期解锁）。同上 |
 
@@ -189,7 +189,8 @@ icey_act({ sequence: ["jjji", "move:right:400", "dash:up:200", "wait:150"] })
 **朝当前方向走一步 + 点一下 U**，不是「朝敌人突进」——
 2026-10-26 实测 **U 不索敌、不转身**，位移全部来自按住的方向键（`05763a9`）。
 真正拉近距离的是那一步位移，U 那一下只多一道剑气。
-闪现（`O`）取消硬直是真的，这条没问题。
+闪现（`O`）**取消硬直**是真的，这条没问题；**无敌帧**是另一件事——O 闪避只带很短的无敌帧，
+不是持续免疫（持续免疫是湍流(8)/流场(9)，而且消耗生命）。
 
 **空战（0.7.0 起，0.9.1 补齐）**：上面表里早就有「空中连段 = 空格 → J」，但自动连玩一直没用上 ——
 招式表里只有挑空（`w+j`）和斩落（`s+j`），**中间那段空中输出是空的**，等于空战只做了两头。
@@ -258,7 +259,7 @@ icey_playbook({ format: 'compact' })  // 4 行精华，省 token
 
 ## 自主连玩：`icey_play`（一次调用玩一段）
 
-前面 6 个工具都是「你做一步、我看一眼」。`icey_play` 是**反过来**的：
+`icey_play` 之前那些工具都是「你做一步、我看一眼」。`icey_play` 是**反过来**的：
 **一次调用跑完一整段**，中途不再问你，结束后汇报「做了什么、途中发生了什么、几张关键截图」。
 
 ```js
@@ -495,7 +496,7 @@ node probe/hud-probe.mjs           # 量 HUD 特征（调阈值时用）
 来自游戏自己的 PlayerPrefs（`HKCU\Software\Shanghai FantaBlade Network Technology Co., Ltd.\ICEY`），不是猜的：
 
 `W/S/A/D` 移动 · `J` 攻击 · `I` 重击 · `L` 处决 · `空格` 跳 · `Enter` 互动/确认 ·
-`Esc` 暂停 · `O` 闪现 · `U` 剑气（**非索敌**，别当追击用） · `8`/`9` 特殊技 · `Q` 对话选「是」 · `E` 对话选「否」
+`Esc` 暂停 · `O` 闪现 · `U` 虚像（**条件技，非索敌**，别当追击用） · `8`/`9` 特殊技 · `Q` 对话选「是」 · `E` 对话选「否」
 
 可以在配置的 `keyMap` 里改。
 
@@ -515,7 +516,7 @@ node probe/hud-probe.mjs           # 量 HUD 特征（调阈值时用）
 node selfcheck.mjs
 ```
 
-45 项起步，现在 **294 项**：PNG 编码/解码往返、像素加工、控制映射、动作队列、Config 归一化、
+45 项起步，现在 **553 项**：PNG 编码/解码往返、像素加工、控制映射、动作队列、Config 归一化、
 场景归类、卡住检测、战斗三档与它的一整套遥测。不需要 DSH、不需要游戏在跑。
 
 ---
@@ -566,13 +567,13 @@ node selfcheck.mjs
 `dsh-tools` 拿不到时用的是插件自带的等价实现，早期版本把参数原样交给宿主 ——
 但 `{ action: { required: true } }` 是 `dsh-tools` 的私有写法，**不是合法 JSON Schema**
 （合法写法是对象级 `required: ["action"]`）。这个错只在**模型调工具时**才报，安装阶段看不出来。
-现在兜底实现会做 spec → JSON Schema 转换，并且 `probe/schema-check.mjs` 会把 6 个工具
+现在兜底实现会做 spec → JSON Schema 转换，并且 `probe/schema-check.mjs` 会把 11 个工具
 的 schema 逐个当合法 JSON Schema 校验一遍。
 
 **2026-10-21 19:4x 复核（DSH 0.2.1-rc.2，WorkBuddy 报的那条）**：把宿主**真正的**校验器
 （`dsh-tools/json-schema`）从 `app.asar` 切出来跑了一遍，见 `probe/dsh-jsonschema.mjs` 头部：
 
-- 6 个工具的 `parameters` / `output.schema` **全部通过**；旧写法会被判红，报错原话
+- 11 个工具的 `parameters` / `output.schema` **全部通过**；旧写法会被判红，报错原话
   `schema.properties.action.required is not supported on type "string"` —— 与当初的报错一致，
   说明校验器接对了（灵敏度自证在 `probe/schema-check.mjs` 里）。
 - 这台机器实测 `dsh-tools` 仍然 `ERR_MODULE_NOT_FOUND` ⇒ **走的是本地兜底**，
@@ -730,9 +731,9 @@ node probe/tier-audit.mjs shots/combat3   # 空地负样本
 
 ```bash
 node probe/secret-scan.mjs       # 密钥扫描（工作区 / --history / --all）
-node probe/schema-check.mjs      # 6 个工具的 schema 是否合法 JSON Schema
+node probe/schema-check.mjs      # 11 个工具的 schema 是否合法 JSON Schema
 node probe/client-check.mjs      # 客户端自注册 / slot / 二进制帧解析
-node probe/tool-check.mjs        # 真调 6 个工具（抓帧 + 按键都是真的）
+node probe/tool-check.mjs        # 真调 11 个工具（抓帧 + 按键都是真的）
 node probe/stream-route-check.mjs # 跑真 /stream 路由，量与帧率
 node probe/config-check.mjs      # 配置持久化往返
 node probe/tier-audit.mjs <shots目录>  # 战斗三档 + 血/盾读数审计（只读截图，不开游戏）

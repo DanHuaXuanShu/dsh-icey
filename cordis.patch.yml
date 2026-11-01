@@ -1,7 +1,7 @@
 # dsh-icey 的 bundle patch：**只插一行**。
 #
 #   dsh-icey   宿主：/api/dsh-icey/* 路由（面板实时画面、状态、动作）+ 配置；
-#              同一个文件末尾会顺带注册 6 个 icey_* 工具（用 ctx.get 探测 tools/attachments）。
+#              同一个文件末尾会顺带注册 11 个 icey_* 工具（用 ctx.get 探测 tools/attachments）。
 #
 # 🔴 为什么不再插第二行 `dsh-icey/agent`（2026-10-22 改）：
 #   插两行会让插件列表里出现**两个标题一样的「艾希 ICEY」**。

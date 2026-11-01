@@ -1,5 +1,5 @@
 /**
- * probe/schema-check.mjs —— 用 **DSH 自己的** JSON Schema 子集校验器验注册出去的 6 个工具
+ * probe/schema-check.mjs —— 用 **DSH 自己的** JSON Schema 子集校验器验注册出去的 11 个工具
  * ============================================================================
  * 为什么不再用手写校验器（2026-10-21 换掉）：
  *   `icey_act schema 无效` 是宿主 `dsh-tools/json-schema` 报的，它的规则比「属性里不许有
@@ -9,7 +9,7 @@
  *   （probe/dsh-jsonschema.mjs，切法见它头部）。
  *
  * 验三件事：
- *   ① 6 个工具最终交给 ctx.tools.register 的 parameters / output.schema 过宿主校验器；
+ *   ① 11 个工具最终交给 ctx.tools.register 的 parameters / output.schema 过宿主校验器；
  *   ② 本地兜底路径产出的是**标准 JSON Schema**（对象级 required，属性里没有 required）；
  *   ③ 宿主 defineTool 路径产出的是**原样 spec**（属性里保留 required: true，由宿主自己转）。
  * 另加**灵敏度自证**：旧写法必须被这个校验器判红 —— 否则校验器接错了也是绿。
@@ -83,5 +83,5 @@ if (problems.length) {
   for (const p of problems) console.log('  -', p)
   process.exit(1)
 }
-console.log('\n✅ 6 个工具的 parameters / output.schema 过 DSH 的 JSON Schema 子集校验')
+console.log('\n✅ 11 个工具的 parameters / output.schema 过 DSH 的 JSON Schema 子集校验')
 console.log('✅ 本地兜底 = 标准 JSON Schema；宿主 defineTool = 原样 spec；旧写法被正确判红')
