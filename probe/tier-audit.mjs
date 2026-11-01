@@ -21,6 +21,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { decodePng } from "../lib/png-decode.mjs";
 import { fitWidth } from "../lib/png.mjs";
 import { analyzeFrame, createPolicy, describeCombat } from "../lib/autoplay.mjs";
+import { HP_BASELINE_MAX, SHIELD_BASELINE_MAX } from "../lib/games/icey/layout.mjs";
 
 const dir = process.argv[2];
 const analysisWidth = Number(process.argv[3]) || 480;
@@ -36,6 +37,16 @@ const files = readdirSync(dir)
 if (!files.length) {
   console.error("目录里没有 png:", dir);
   process.exit(2);
+}
+
+// ⚠️ 含标题栏的旧帧目录（2026-10-31 之前 GetWindowRect 抓的，含白色标题栏）。
+// layout.mjs 现在是「客户区坐标系」（capture() 已按 GetClientRect 裁掉标题栏），
+// 拿旧帧套新框，血/盾框位整体偏上，读数不可信 —— 只配当历史参考，别拿它下结论。
+const LEGACY_TITLEBAR_DIRS = /shots[/\\]combat($|[/\\])|shots[/\\]combat3($|[/\\])/i;
+if (LEGACY_TITLEBAR_DIRS.test(dir.replace(/\\/g, '/'))) {
+  console.log("\n⚠️ 这批帧是「含标题栏」的旧口径（GetWindowRect，含白色标题栏）。");
+  console.log("   当前 layout 是「客户区坐标系」（capture 已裁标题栏），血/盾框位会整体偏上，");
+  console.log("   下面所有血/盾读数仅作历史参考，不代表当前插件的真实表现。");
 }
 
 /** @type {Array<{f:string, hp:number, shield:number, combo:number, menuRows:number, motion:number|null}>} */
@@ -92,7 +103,9 @@ for (const [name, s] of [["hp(蓝=血)", hpS], ["shield(黄=盾)", shS], ["combo
   )
 }
 
-// 判读：满血/满盾的实测参考值（见 lib/games/icey/layout.mjs，2026-10-26 校准）
+// 判读：满血/满盾的实测参考值（见 lib/games/icey/layout.mjs，2026-10-26 校准）。
+// ⚠️ 这两个值是「客户区坐标系」口径标定的，只对**无标题栏的客户区帧**成立；
+//    对含标题栏的旧帧（shots/combat、shots/combat3）不成立，框位会偏上。
 const REF_HP_FULL = 0.6897
 const REF_SHIELD_FULL = 0.1012
 const menuFrames = rows.filter((r) => r.menuRows >= 1).length
@@ -119,7 +132,18 @@ const cs = policy.combatStats
 console.log("\n--- 战斗档位遥测 ---")
 console.log(describeCombat(cs))
 console.log(`\n基线最终值：血 ${pct(cs.hpBaseline)}  盾 ${pct(cs.shieldBaseline)}`)
-console.log(`（基线只是「见过最大值」；它明显高于满血/满盾参考值 ⇒ 被污染锚死了）`)
+// 基线是「见过最大值」，但要区分三种情况，别一刀切说「污染」：
+//   ① > 上限（HP_BASELINE_MAX / SHIELD_BASELINE_MAX）→ 真被污染、被夹住上限
+//   ② == 下限托底（HP_BASELINE_FLOOR=0.84）→ 整局没满过血、被下限托底（不是污染）
+//   ③ 落在两者之间 → 正常
+function judgeBaseline(name, baseline, max, floor) {
+  if (baseline > max + 1e-9) return `${name}基线 ${pct(baseline)} > 上限 ${pct(max)} ⇒ 真被污染、被夹住上限`
+  if (floor !== undefined && Math.abs(baseline - floor) < 1e-9) return `${name}基线 ${pct(baseline)} == 下限托底 ${pct(floor)} ⇒ 整局没满过、被下限托底（不是污染）`
+  return `${name}基线 ${pct(baseline)} 落在正常区间（上限 ${pct(max)}）`
+}
+// HP_BASELINE_FLOOR 是 autoplay.mjs 里的模块内常量（0.84），这里不 import，直接说明它存在
+console.log("  · " + judgeBaseline("血", cs.hpBaseline, HP_BASELINE_MAX, 0.84))
+console.log("  · " + judgeBaseline("盾", cs.shieldBaseline, SHIELD_BASELINE_MAX, undefined))
 if (cs.changes.length) {
   console.log("\n--- 换档明细 ---")
   for (const c of cs.changes) {
