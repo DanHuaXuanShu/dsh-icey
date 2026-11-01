@@ -1964,7 +1964,8 @@ console.log('\n[6] 自主连玩策略')
   ok('icey_play 有 stop 参数', /stop: \{/.test(bgAgent), '')
   ok('icey_play 有 focus / style 参数', /focus: \{/.test(bgAgent) && /style: \{/.test(bgAgent), '')
   ok('icey_look 会显示后台战斗态', /后台战斗正在打/.test(bgAgent), '')
-  ok('describeStatus 会显示后台战斗', /后台战斗进行中/.test(bgAgent), '')
+  // describeStatus 已经搬到 lib/status-text.mjs，那条断言改成了「真跑函数」版，
+  // 见下面「人话：后台战斗…」那几条 —— 不再靠 grep 源码找字面量。
   const bgBook = fsSync.readFileSync(new URL('./lib/playbook.mjs', import.meta.url), 'utf8')
   ok('规则卡写了「开一次就撒手」', /就撒手/.test(bgBook), '')
   ok('规则卡写明没有「撤退」选项', /没有「撤退」这个选项/.test(bgBook), '')
@@ -2503,16 +2504,14 @@ console.log('\n[6] 自主连玩策略')
     {
       const agentSrc = fsSync.readFileSync(new URL('./agent.js', import.meta.url), 'utf8')
       const gameSrc2 = fsSync.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
-      const iStart = agentSrc.indexOf('function describeStatus(st)')
-      const iEnd = agentSrc.indexOf('function toSchema')
-      const body = iStart >= 0 && iEnd > iStart ? agentSrc.slice(iStart, iEnd) : ''
-      ok('describeStatus 真的读了 st.inputLang（否则模型看不到布局）',
-        /st\.inputLang/.test(body), '字段在 status 里躺着一百年，人话里一个字都没有')
-      ok('describeStatus 用统一的 describeInputLang 渲染（不自己拼）',
-        /describeInputLang\(/.test(body), '各拼各的 → 迟早两种说法')
-      ok('布局那句人话只由 lib/inputlang.mjs 提供',
-        /from '\.\/lib\/inputlang\.mjs'/.test(agentSrc) && /describeInputLang/.test(agentSrc),
-        'agent.js 必须从 lib/inputlang.mjs 取')
+      // 呈现层：从「grep 源码」升级成「真跑函数」。
+      // 2026-11-01 第一版是切 agent.js 源码片段找 `st.inputLang` —— 那只能证明代码长得像，
+      // 而且写成 /function describeStatus/ 切块，函数一搬家就误报红。
+      // 现在 describeStatus 是 lib/status-text.mjs 里的纯函数，直接喂假 status 看输出。
+      ok('agent.js 从 lib/status-text.mjs 取人话（不是自己又写一份）',
+        /import\s*\{\s*describeStatus\s*\}\s*from\s*'\.\/lib\/status-text\.mjs'/.test(agentSrc)
+        && !/function describeStatus/.test(agentSrc),
+        '两份实现 = 迟早只有一份被改')
       // 形状归一：小写 inputlang 不许再当返回字段用（它就是当年那一半病根）。
       // 注意 `this.backend.inputlang(` 是 host 命令名，不算 —— 所以只查「后面跟逗号/右括号」的键名写法。
       ok('返回字段统一叫 inputLang（小写 inputlang 只剩 host 命令名）',
@@ -2521,9 +2520,10 @@ console.log('\n[6] 自主连玩策略')
       ok('三个入口（attach / status / act）都过 normalizeInputLang',
         (gameSrc2.match(/normalizeInputLang\(/g) || []).length >= 4,
         '至少 attach、status、act、play 四处')
+      ok('game.mjs 里不许再手拼 hex（toHex 只活在 inputlang.mjs）',
+        !/toString\(16\)\.padStart\(4/.test(gameSrc2),
+        '手拼 + `?? 0` 兜底会把「读不到」伪装成「布局是 0x0000」，日志里出现看似确凿的假信息')
       // 行为断言：**真跑函数**。光看代码长得对不算。
-      // 这条盯的是最阴的那处语义冲突：readInputLang 的中文布局返回 ok:true，
-      // 谁要是把原始 ok 抄进 canonical，中文布局就会被判成「没问题」——而这正是要报的坏事。
       {
         const { normalizeInputLang, describeInputLang } = await import('./lib/inputlang.mjs')
         const en = normalizeInputLang({ ok: true, lang: 0x0409, hex: '0409', english: true })
@@ -2544,6 +2544,85 @@ console.log('\n[6] 自主连玩策略')
           describeInputLang(none).includes('读不到') && describeInputLang(zh).includes('0x0804')
           && describeInputLang(en).includes('英文'),
           '三种状态混成一句，模型就会把「没证据」当「没问题」')
+
+        // ↓ 这一段就是「第三段断点」的守门：喂进去的 status 必须让那行文字出来。
+        const { describeStatus } = await import('./lib/status-text.mjs')
+        const base = {
+          running: true, rect: { width: 1606, height: 935 }, pid: 41812, uptimeMs: 7000,
+          health: { playable: true, foreground: true }, queue: { depth: 0, done: 0 },
+        }
+        const rows = (txt) => txt.split('\n')
+        const layLine = (txt) => rows(txt).find((l) => l.startsWith('键盘布局：')) || ''
+        const tEn = describeStatus({ ...base, inputLang: en })
+        ok('人话：英文时那行确实出现了（第三段断点的守门）',
+          layLine(tEn).includes('0x0409') && layLine(tEn).includes('进得去'), layLine(tEn) || '（整段里没有这一行）')
+        ok('人话：那行是独立一行（不并进「可以操作」那句里）',
+          layLine(tEn) !== '' && rows(tEn).filter((l) => l.includes('键盘布局：')).length === 1, JSON.stringify(rows(tEn)))
+        const tZh = describeStatus({ ...base, inputLang: zh })
+        ok('人话：中文时说清「不是英文」+ 怎么修',
+          layLine(tZh).includes('0x0804') && layLine(tZh).includes('不是英文') && layLine(tZh).includes('Win+Space'),
+          layLine(tZh))
+        const tNone = describeStatus({ ...base, inputLang: none })
+        ok('人话：读不到时明说读不到（不许静默少一行）',
+          layLine(tNone).includes('读不到'), layLine(tNone) || '（整段里没有这一行 —— 又回到「数据没渲染」）')
+        const tMissing = describeStatus(base) // 连字段都没有
+        ok('人话：字段整个缺失也要有「读不到」，不能静默省略',
+          layLine(tMissing).includes('读不到'), layLine(tMissing) || '（整段里没有这一行）')
+        ok('人话：没接上游戏时不谈布局（不误导）',
+          !/键盘布局：/.test(describeStatus({ running: false, health: { reason: '没找到 ICEY 窗口' } })),
+          '没接上还报布局 = 编的')
+        // 后台战斗那几行以前也只靠 grep 源码找字面量，顺手一起改成真跑函数。
+        const tBg = describeStatus({
+          ...base, inputLang: en,
+          background: {
+            running: true, elapsedMs: 12_000, maxSeconds: 90,
+            order: { focus: 'left', style: 'aggressive' },
+            actions: { combo: 7, move: 2 }, lastEvents: ['换档 → aggressive'],
+          },
+        })
+        ok('人话：后台战斗在跑时说得出来（跑函数验，不靠 grep）',
+          tBg.includes('后台战斗进行中') && tBg.includes('focus=left') && tBg.includes('combo×7')
+          && tBg.includes('12 秒'), tBg)
+        const tBgLast = describeStatus({
+          ...base, inputLang: en,
+          background: {
+            running: false,
+            last: { seconds: 30, preset: 'fight', stopped: '玩满 30 秒', actions: { combo: 5 }, combat: { frames: 0 } },
+          },
+        })
+        ok('人话：上一场后台战斗的结局 + 动作明细会带回来',
+          tBgLast.includes('上一场后台战斗') && tBgLast.includes('combo×5')
+          && tBgLast.includes('玩满 30 秒'), tBgLast)
+
+        // ★ 自证「上面那几条不是空气」：抽掉渲染那一行，输出里就必须没有那一行。
+        //   做法是**造一个临时副本**再 import（真源码一个字节都不动）。
+        //   以前用「临时改真源码 + 还原」验，栽过：String.replace 没匹配上时静默返回原样，
+        //   还原没生效，坏代码被提交。副本法最坏也就是留一个没人 import 的临时文件。
+        {
+          const fs = await import('node:fs')
+          const TARGET = '    describeInputLang(st.inputLang),'
+          const srcPath = new URL('./lib/status-text.mjs', import.meta.url)
+          const raw = fs.readFileSync(srcPath, 'utf8')
+          const hits = raw.split(TARGET).length - 1
+          // 目标串不唯一 = 这条自证本身失效，必须红（绝不能静默跳过）
+          if (hits !== 1) {
+            ok('自证：抽掉渲染后布局行必须消失', false,
+              `自证目标串出现 ${hits} 次（要求 1 次）—— 请同步更新这条自证，否则它就是在空转`)
+          } else {
+            const tmp = new URL(`./lib/__selftmp-${process.pid}-${Date.now()}.mjs`, import.meta.url)
+            let gone = false
+            try {
+              fs.writeFileSync(tmp, raw.replace(TARGET, ''), 'utf8')
+              const m = await import(tmp.href)
+              const t = m.describeStatus({ ...base, inputLang: en })
+              gone = !t.split('\n').some((l) => l.startsWith('键盘布局：'))
+            } finally {
+              try { fs.unlinkSync(tmp) } catch { /* 已经不在了 */ }
+            }
+            ok('自证：抽掉渲染那一行后，人话里就没有布局了（那几条断言不是空气）', gone,
+              '抽掉了还在 —— 说明上面那几条测的不是真实代码路径')
+          }
+        }
       }
       // 文档跟着改 —— 同一天发现的另一类漂移：代码里字段改名了，文档还在教人读旧字段。
       const rd = fsSync.readFileSync(new URL('./README.md', import.meta.url), 'utf8')

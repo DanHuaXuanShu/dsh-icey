@@ -16,7 +16,7 @@
  */
 import { loadHostDeps } from './lib/hostdeps.mjs'
 import { session } from './lib/session.mjs'
-import { summarizeRun, describeCombat } from './lib/autoplay.mjs'
+import { summarizeRun } from './lib/autoplay.mjs'
 // 批量动作：把「一串动作」压进一次工具调用，省掉中间的模型往返（每次 6~12 秒）
 import { parseActionSpec, MAX_SEQUENCE } from './lib/control.mjs'
 import { registerIceyDev } from './lib/devtool.mjs'
@@ -25,6 +25,9 @@ import { markLoaded } from './lib/devctl.mjs'
 // 键盘布局那一句只在这里写一次。历史上它有过两个名字/两种形状，
 // 而且 status 对象里有字段、人话里没有 —— 详见 lib/inputlang.mjs 顶部。
 import { describeInputLang } from './lib/inputlang.mjs'
+// status → 人话的转换搬到了 lib/status-text.mjs（纯函数），
+// 这样自检可以喂假 status 直接验输出，不用靠 grep 源码猜它拼没拼进去。
+import { describeStatus } from './lib/status-text.mjs'
 
 export const name = 'dsh-icey-agent'
 export const inject = ['tools', 'attachments']
@@ -65,62 +68,6 @@ const imageOutput = {
 const safe = (v) => {
   if (v === undefined || v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return v
   try { return JSON.parse(JSON.stringify(v)) } catch { return String(v) }
-}
-
-/** 把 status 压成一句人话，别让模型自己拼 */
-function describeStatus(st) {
-  if (!st.running) {
-    return `没接上游戏。${st.health?.reason || ''}\n下一步：icey_start（launchMode=attach 接上已经开着的窗口；如果游戏没开，用 steam 或 direct 让插件启动）。`
-  }
-  const bits = [
-    `窗口 ${st.rect ? `${st.rect.width}x${st.rect.height}` : '?'}`,
-    `pid ${st.pid}`,
-    `已连 ${Math.round((st.uptimeMs || 0) / 1000)} 秒`,
-    st.health?.foreground ? '在前台' : '不在前台',
-  ]
-  if (st.minimized) bits.push('已最小化')
-  if (st.backend && !st.backend.koffiOk) bits.push('⚠️ koffi 不可用 ⇒ 只能看不能动')
-  const canAct = st.health?.playable
-  const lines = [
-    `接上了：${bits.join('，')}。`,
-    canAct
-      ? '可以操作（按键会先把游戏抢到前台，会打断你正在做的事）。'
-      : `现在不能操作：${st.health?.reason || '原因未知'}`,
-    // 🔴 2026-11-01：这一行以前**不存在**。status() 早就返回了 inputLang，但这里没读，
-    //   于是「数据到了」而「模型看不到」—— 自检全过、commit 说「能看到了」、实际一个字都没有。
-    //   「能操作」只看窗口在前台、抓不抓得到画面，跟按键进不进得去游戏是两件事。
-    describeInputLang(st.inputLang),
-    st.queue ? `动作队列：${st.queue.depth} 个在等，已完成 ${st.queue.done}。` : '',
-  ].filter(Boolean)
-  // 后台战斗的运行态 + 上一场的结局（2026-10-27 加）。
-  // 后台模式下模型拿不到同步返回值，停手原因只能从这里读 —— 不给它，模型就没法复盘。
-  const bg = st.background
-  // 动作明细：只报「动作 N 次」等于复不了盘（不知道打的是连段还是普攻、有没有闪）
-  const fmtActions = (a) => Object.entries(a || {})
-    .filter(([, v]) => v > 0)
-    .sort((x, y) => y[1] - x[1])
-    .map(([k, v]) => `${k}×${v}`)
-    .join(' ')
-  if (bg?.running) {
-    lines.push(`⚔️ 后台战斗进行中：已 ${Math.round((bg.elapsedMs || 0) / 1000)} 秒 / 上限 ${bg.maxSeconds} 秒，`
-      + `focus=${bg.order.focus} style=${bg.order.style}${bg.abortRequested ? '（已请求停手，下一步停）' : ''}。`)
-    if (bg.orderError) lines.push(`  ⚠️ 微调参数被拒：${bg.orderError}`)
-    const acts = fmtActions(bg.actions)
-    if (acts) lines.push(`  动作：${acts}`)
-    if (bg.lastEvents?.length) lines.push(`  最近：${bg.lastEvents.join(' / ')}`)
-  } else if (bg?.last) {
-    const l = bg.last
-    lines.push(`上一场后台战斗：${l.seconds} 秒（${l.preset || '?'}），停因「${l.stopped || '未知'}」。`)
-    const acts = fmtActions(l.actions)
-    if (acts) lines.push(`  动作：${acts}`)
-    // 2026-10-29：连击区峰值/上涨次数 —— 后台模式打完只有动作计数的话，
-    // 分不清「打中了」和「空挥了一整场」。这一行就是那个分界。
-    if (l.combat) lines.push(`  ${describeCombat(l.combat)}`)
-    if (l.order && (l.order.focus !== 'auto' || l.order.style !== 'auto')) {
-      lines.push(`  当时微调：focus=${l.order.focus} style=${l.order.style}`)
-    }
-  }
-  return lines.join('\n')
 }
 
 /**
