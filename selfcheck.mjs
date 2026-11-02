@@ -2444,6 +2444,36 @@ console.log('\n[6] 自主连玩策略')
         SHIELD_BOX.x1 < 0.5,
         `shield.x1=${SHIELD_BOX.x1}`)
     }
+    // 连击框守卫（2026-11-02 重标定）。数字全部来自实机实测，不是拍的：
+    //   数字足迹   x 0.0979~0.1323  y 0.2296~0.2630
+    //   进度条足迹 x 0.0979~0.1698  y 0.2722~0.2796
+    // 旧框 {0.075, 0.176, 0.235, 0.27} 的毛病是「太松」：上面留 0.054 的空带、右边多 0.065，
+    // 在 480 宽的分析帧上把 c0395 稀释到 0.53%（< COMBO_MIN 0.006）⇒ 真打起来可能整段读不到。
+    // 这里锁三件事：必须罩住数字、必须够到进度条、面积不能又涨回去。
+    {
+      const { COMBO_BOX, COMBO_MIN, HP_BOX, SHIELD_BOX } = await import('./lib/games/icey/layout.mjs')
+      const DIGIT = { x0: 0.0979, x1: 0.1323, y0: 0.2296, y1: 0.2630 }
+      const BAR_TOP = 0.2722
+      ok('连击框罩住实测的数字足迹（左/右/上/下四边都要留出余量）',
+        COMBO_BOX.x0 <= DIGIT.x0 && COMBO_BOX.x1 >= DIGIT.x1 &&
+        COMBO_BOX.y0 <= DIGIT.y0 && COMBO_BOX.y1 >= DIGIT.y1,
+        JSON.stringify(COMBO_BOX))
+      ok('连击框够到进度条（小数字「2 连击」只有进度条能撑过阈值）',
+        COMBO_BOX.y1 >= BAR_TOP,
+        `y1=${COMBO_BOX.y1} / barTop=${BAR_TOP}`)
+      ok('连击框上方没有空带（y0 要贴着数字上沿，旧框 0.176 就死在这）',
+        COMBO_BOX.y0 >= 0.20,
+        `y0=${COMBO_BOX.y0}`)
+      ok('连击框面积不膨胀（面积越大、480 宽下读数被稀释越狠）',
+        (COMBO_BOX.x1 - COMBO_BOX.x0) * (COMBO_BOX.y1 - COMBO_BOX.y0) <= 0.012,
+        `area=${((COMBO_BOX.x1 - COMBO_BOX.x0) * (COMBO_BOX.y1 - COMBO_BOX.y0)).toFixed(5)}`)
+      // 护盾黄箭头在 y 0.1222~0.1310，血条在 0.104~0.117 —— 连击框绝不能往下退到它们那儿。
+      ok('连击框不碰血条/护盾/黄色箭头带',
+        COMBO_BOX.y0 > SHIELD_BOX.y1 && COMBO_BOX.y0 > 0.16,
+        `combo.y0=${COMBO_BOX.y0} / shield.y1=${SHIELD_BOX.y1}`)
+      ok('连击阈值仍是 0.006（收紧框不等于要重设阈值，别顺手改了）',
+        COMBO_MIN === 0.006, String(COMBO_MIN))
+    }
     // README 空战表里的权重数字必须等于 COMBO_WEIGHTS 的实际值。
     // 起因（2026-10-31 检查会话发现）：注释写「低权重」，实际给了 3/4/3，
     // README 表格抄的又是 3/4/3 —— 三处各说各的，改一处漏两处。
