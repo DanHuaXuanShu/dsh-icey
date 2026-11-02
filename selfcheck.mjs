@@ -1850,15 +1850,22 @@ console.log('\n[6] 自主连玩策略')
     const { describeCombat } = await import('./lib/autoplay.mjs')
     const pTier = createPolicy('advance')
     // 先满血满盾打几帧（把基线立起来）
+    // 🔴 护盾这里**故意喂 0.30**（超过 SHIELD_BASELINE_MAX = 0.20）。
+    //    之前喂的是 0.10，永远够不到上限，「夹住」那条分支一次都没被执行过 ——
+    //    断言等于在自证一个不存在的场景（审计-2026-11-02 判定的假通过）。
     for (let i = 0; i < 6; i++) {
-      pTier.decide({ motion: 0.3, combo: 1, hudKick: 0, hudBright: 0.08, progress: 0.5, hp: 0.93, shield: 0.10 }, { now: i * 300 })
+      pTier.decide({ motion: 0.3, combo: 1, hudKick: 0, hudBright: 0.08, progress: 0.5, hp: 0.93, shield: 0.30 }, { now: i * 300 })
     }
     const cs0 = pTier.combatStats
     ok('战斗帧会被计入遥测', cs0.frames >= 6, `frames=${cs0.frames}`)
-    // 喂 0.93（满血实测 92.86% 取整），但基线上限是 0.92 —— 所以基线落在 0.92。
-  // 这正好说明「物理上限」在起作用：污染帧再高也顶不上去。
-  ok('基线取到了满血实测值（并被物理上限 0.92 夹住）', Math.abs(cs0.hpBaseline - 0.92) < 0.001 && Math.abs(cs0.shieldBaseline - 0.10) < 0.001,
+    // 喂 0.93 / 0.30，两个都超过上限（0.92 / 0.20）—— 基线必须被夹在 0.92 / 0.20。
+    // 这正好说明「物理上限」在起作用：污染帧再高也顶不上去。
+    ok('基线取到了满血实测值（并被物理上限 0.92 / 0.20 夹住）',
+      Math.abs(cs0.hpBaseline - 0.92) < 0.001 && Math.abs(cs0.shieldBaseline - 0.20) < 0.001,
       `hp基线=${cs0.hpBaseline} shield基线=${cs0.shieldBaseline}`)
+    // 光看基线值不够：得证明「越界 → 夹住」这条分支真的跑过，而不是恰好数值相同。
+    ok('越界样本真的走到了「夹上限」分支（baselineClamped ≥ 1）',
+      cs0.baselineClamped >= 1, `baselineClamped=${cs0.baselineClamped}`)
     // 再打到破盾+血少：必须换档，且换档记录里带着原始读数
     for (let i = 6; i < 10; i++) {
       pTier.decide({ motion: 0.3, combo: 1, hudKick: 0, hudBright: 0.08, progress: 0.5, hp: 0.30, shield: 0.01 }, { now: i * 300 })
@@ -2062,7 +2069,13 @@ console.log('\n[6] 自主连玩策略')
       ['shots/ui-neg/t1032.png', false, '地图列表'],
     ]
     for (const [p, want, label] of upCases) {
-      if (!fsSync.existsSync(new URL(p, import.meta.url))) { ok(`${label}：样本缺失（跳过）`, true, p); continue }
+      // 🔴 样本缺失时**不记分**（既不算通过也不算失败）。原来写的是 ok(..., true, p) ——
+      //    那等于把「没数据」显示成「通过」，骗的是整个门禁（审计-2026-11-02 判定的假通过）。
+      //    写法照 :1733 那条：只打一行 `--`，不进 pass/fails。
+      if (!fsSync.existsSync(new URL(p, import.meta.url))) {
+        console.log(`  --    ${label}：样本缺失，跳过（${p}）`)
+        continue
+      }
       const im = decUp(fsSync.readFileSync(new URL(p, import.meta.url)))
       const r = afUp(im.rgba, im.width, im.height, null)
       ok(`强化界面判据：${label} → ${want ? '命中' : '不命中'}`,
@@ -2141,7 +2154,11 @@ console.log('\n[6] 自主连玩策略')
         ['probe/fixtures/ui-negative-death.png', false, '死亡画面'],
       ]
       for (const [p, want, note] of barCases) {
-        if (!fsSync.existsSync(new URL(p, import.meta.url))) { ok(`屏障：${note}（样本缺失，跳过）`, true, p); continue }
+        // 🔴 同上：样本缺失 → 只打 `--`，不记分。原来写 ok(..., true, p) 是假通过。
+        if (!fsSync.existsSync(new URL(p, import.meta.url))) {
+          console.log(`  --    屏障：${note} 样本缺失，跳过（${p}）`)
+          continue
+        }
         const im = dec(fsSync.readFileSync(new URL(p, import.meta.url)))
         const e = envBar(im.rgba, im.width, im.height)
         ok(`屏障判据：${note} → ${want ? '认出' : '不误报'}`,
@@ -2697,6 +2714,59 @@ console.log('\n[6] 自主连玩策略')
       && /hpBaseline < HP_BASELINE_FLOOR\) hpBaseline = HP_BASELINE_FLOOR/.test(apSrc), '')
     ok('连击区峰值/上涨次数有记录（分辨打中 vs 空挥）',
       /comboPeak/.test(apSrc) && /comboGains/.test(apSrc), '')
+    // probe/fit.mjs 的 TPR / FPR 从来没被自检摸过（审计-2026-11-02 第 3 条）。
+    // 它算的是「当前手填阈值实际的效果」—— 也就是**唯一**能说明「这个阈值是不是在骗人」的数。
+    // 为什么不能端到端跑：fit.mjs 读 shots/timeline（2422 张 png）和 shots/combat，
+    // 这两个目录在 .gitignore 里（shots/ 约 350 MB），新克隆的仓库根本没有；
+    // 自检里跑它等于「别人机器上必红、自己机器上绿」—— 那不是门禁，是本地彩蛋。
+    // 所以这里选方案 (b)：
+    //   ① 静态锁住公式本身（被改坏就红）；
+    //   ② 用固定小样本数组把语义钉死（阈值含等号、分母 || 1 防 0 除）——
+    //      跑的是同一套表达式，只是数据不依赖 shots/。
+    //   （方案 (a) 抽成可 import 的纯函数要动 probe/，本轮只许改 selfcheck.mjs，所以没走。）
+    {
+      const fitSrc = fsSync.readFileSync(new URL('./probe/fit.mjs', import.meta.url), 'utf8')
+      ok('fit.mjs 的 TPR/FPR 公式还在（阈值含等号、分母防 0 除）',
+        /tpr\s*=\s*pos\.filter\(\(x\)\s*=>\s*x\s*>=\s*c\.cur\)\.length\s*\/\s*\(pos\.length\s*\|\|\s*1\)/.test(fitSrc)
+        && /fpr\s*=\s*neg\.filter\(\(x\)\s*=>\s*x\s*>=\s*c\.cur\)\.length\s*\/\s*\(neg\.length\s*\|\|\s*1\)/.test(fitSrc),
+        '公式改了就得同步这条断言，否则它只是在给旧字符串站岗')
+      ok('fit.mjs 把 TPR/FPR 记进 _diag（不然只打印、下游拿不到）',
+        /c\._diag\s*=\s*\{[^}]*tpr[^}]*fpr/.test(fitSrc), '')
+      const headLine = fitSrc.split('\n').find((l) => l.includes("'判据'.padEnd")) || ''
+      ok('fit.mjs 表头确实有 TPR / FPR 两列', /TPR[\s\S]{0,40}FPR/.test(headLine), headLine.slice(0, 90))
+      // 固定样本：阈值 0.5。pos 里 0.5 和 0.9 命中 → 2/3；neg 里 0.5 命中 → 1/2。
+      // 这两个数不是拍的，是手算的，改公式就会对不上。
+      const FIX_POS = [0.2, 0.5, 0.9]
+      const FIX_NEG = [0.1, 0.5]
+      const FIX_CUR = 0.5
+      const fixTpr = FIX_POS.filter((x) => x >= FIX_CUR).length / (FIX_POS.length || 1)
+      const fixFpr = FIX_NEG.filter((x) => x >= FIX_CUR).length / (FIX_NEG.length || 1)
+      ok('TPR 语义：等于阈值也算命中（>= 不是 >）',
+        Math.abs(fixTpr - 2 / 3) < 1e-9, `tpr=${fixTpr}`)
+      ok('FPR 语义：负样本用同一阈值，等于阈值的算误报',
+        Math.abs(fixFpr - 0.5) < 1e-9, `fpr=${fixFpr}`)
+      ok('样本为空时 || 1 兜住，得到 0 而不是 NaN/抛异常',
+        Number.isFinite([].filter((x) => x >= FIX_CUR).length / ([].length || 1)), '')
+    }
+    // registerIceyDev 没有任何自检守门（审计-2026-11-02 第 4 条）。
+    // 它注册 icey_dev（stamp / probe / reload / selfcheck）—— 改完 lib/ 之后
+    // 「这次改动到底进没进到正在跑的进程」全靠它。这类接线漏过一次就是：
+    // 函数在 devtool.mjs 里、agent.js 既没 import 也没调，工具静默消失，而自检全绿。
+    // 纯静态可查：三处必须同时成立（导出 → import → 真调用）。
+    {
+      const agentSrc2 = fsSync.readFileSync(new URL('./agent.js', import.meta.url), 'utf8')
+      const devSrc = fsSync.readFileSync(new URL('./lib/devtool.mjs', import.meta.url), 'utf8')
+      ok('devtool.mjs 导出了 registerIceyDev',
+        /export\s+function\s+registerIceyDev\s*\(/.test(devSrc), '')
+      ok('agent.js import 了 registerIceyDev',
+        /import\s*\{\s*registerIceyDev\s*\}\s*from\s*'\.\/lib\/devtool\.mjs'/.test(agentSrc2),
+        '没 import 就不可能注册')
+      ok('agent.js 真的调用了 registerIceyDev（不是 import 了放着）',
+        /\bregisterIceyDev\s*\(\s*tool\s*,/.test(agentSrc2),
+        'import 了不调用 = icey_dev 静默消失，自检还是全绿')
+      ok('调用点传了 tool 和 getCtx（否则工具注册不进去）',
+        /\bregisterIceyDev\s*\(\s*tool\s*,\s*\(\)\s*=>\s*pluginCtx\s*\)/.test(agentSrc2), '')
+    }
   }
 }
 
