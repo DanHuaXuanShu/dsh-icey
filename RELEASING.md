@@ -110,7 +110,7 @@ git push --follow-tags       # 推代码和 tag → Actions 自动发布
 
 | 步骤 | 作用 |
 |---|---|
-| `node selfcheck.mjs` | 553 项纯逻辑自检 |
+| `node selfcheck.mjs` | 纯逻辑自检（项数以实际输出为准，别写死数字） |
 | `node probe/schema-check.mjs` | 11 个工具的 schema 是不是合法 JSON Schema |
 | `node probe/client-check.mjs` | 客户端自注册 / slot / 二进制帧解析 |
 | `node probe/apply-harness.mjs` | 桩 ctx 下插件能激活、工具数正确 |
