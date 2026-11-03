@@ -75,7 +75,24 @@ npm.cmd publish                         # 发布（注意是 npm.cmd，npm 会�
   能抓住「阈值只在一张截图上成立」这类错。
 - 发布顺序：**先改完文档 → 再 bump 版本 → 再 publish**。反过来 npm 上那个版本的 README 就是旧的，
   而已发布版本不能改写。
-- `probe/` 下是探针（一次性脚本，用完删）。常驻的只有 `tier-audit.mjs` / `menu-audit.mjs`。
+- `probe/` 下是探针。**只留「被代码或文档点名、下次还要跑」的**，其余排查完当轮就删。
+  2026-11-03 清了一轮：138 → 39 个（删掉 99 个既无代码引用、也无文档提及的；
+  `git log` 里能找回，不必心疼）。留存 39 个分三类：
+  - **自检真的读它**：`fit.mjs`（`selfcheck.mjs:2846` 读它的源码断言 TPR/FPR 公式，
+    删了自检直接崩）。
+  - **AGENTS / README / HANDOFF 点名的复验工具**：`tier-audit.mjs`、`menu-audit.mjs`、
+    `upgrade-menu-sweep.mjs`、`schema-check.mjs` + 它 import 的 `dsh-jsonschema.mjs`、
+    `secret-scan.mjs`、`config-check.mjs`、`client-check.mjs`、`tool-check.mjs`、
+    `apply-harness.mjs`、`stream-route-check.mjs`、`autoplay-check.mjs`、`play-loop-check.mjs`、
+    `hud-probe.mjs`、`hud-compare.mjs`、`meta-audit.mjs`、`meta-decide.mjs`、`detect.mjs`、
+    `track-hero.mjs`、`watch-combat.mjs`、`diag.mjs`、`keycap-bench.mjs`+`keycap2.mjs`、
+    `keycap-diag.mjs`、`check-keycap.mjs`、`combo-crop.mjs`、`crop.mjs`、`burst.mjs`、
+    `seq-signal.mjs`。
+  - **被 `lib/` 注释当「标定工具」引用**（注释说这些数是它量的）：`ab-analyze.mjs`、
+    `arrow-check.mjs`、`enemy-motion.mjs`、`hero-x.mjs`、`focus-test.mjs`、
+    `make-arrow-template.mjs`、`make-chest-template.mjs`、`make-chest-template2.mjs`、
+    `make-glyph-template.mjs`（后四个是生成模板的工具，模板文件还在用）。
+  - 新加探针：要么当轮删，要么进上面任一类并在本行点名 —— 别只提交不说。
 
 ## 五、标准开工姿势
 
