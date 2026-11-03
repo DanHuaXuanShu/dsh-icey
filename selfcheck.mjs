@@ -502,6 +502,48 @@ console.log('\n[3] 控制映射')
     ok('场景：黑屏但有字幕 → dialog（不是 blank）',
       classifyScene({ menuRows: 0, combo: 0, subtitle: 0.01, hud: 0.005 }).scene === 'dialog')
 
+    // 5b. 死亡菜单（2026-11-03）。这一组守的是「fight 档对着死亡菜单空按 9.6 秒」那个 bug。
+    //
+    // 数值全部是 shots/death-menu/death-menu-01.png 上实测出来的，故意写成字面量：
+    // 谁把 DEATH_WARM_MIN / DEATH_ROWS_MIN / DEATH_HUD_MAX 放宽了去凑识别，这里会红。
+    {
+      const death = { menuRows: 0, combo: 0, subtitle: 0, hudBright: 0, deathWarm: 0.6639, deathRows: 2 }
+      ok('场景：无 HUD + 暗红棕底 + 两行白字 → death',
+        classifyScene(death).scene === 'death',
+        JSON.stringify(classifyScene(death)))
+
+      // 判「无 HUD」必须用 hudBright（亮像素占比 0~1）。hud 是平均亮度 0~255，
+      // 死亡菜单上实测 22.57–32.22，换算成占比是 9%~13%。若判据误用 hud，
+      // hudRatio(23.87) = 9.4% 会越过 1% 门槛 → 这一条会红。
+      ok('场景：hud 有值但 hudBright 为 0 → 仍认 death（证明判据用的是 hudBright 而不是 hud）',
+        classifyScene({ menuRows: 0, combo: 0, subtitle: 0, hud: 23.87, hudBright: 0, deathWarm: 0.6639, deathRows: 2 }).scene === 'death')
+
+      // 暖色不是判据，只是粗筛。这两条是真实负样本，靠「没有那两行白字」排除。
+      ok('场景：暖色 99.87% 但 0 行白字 → 不是 death（shots/timeline/f01021.png）',
+        classifyScene({ menuRows: 0, combo: 0, subtitle: 0, hudBright: 0, deathWarm: 0.9987, deathRows: 0 }).scene !== 'death')
+      ok('场景：暖色 81.6% 但 0 行白字 → 不是 death（w0448）',
+        classifyScene({ menuRows: 0, combo: 0, subtitle: 0, hudBright: 0, deathWarm: 0.816, deathRows: 0 }).scene !== 'death')
+
+      // 暖色门槛下沿：0.25 是刻意贴着安全窗口下沿定的（偏向召回，漏一帧就重现本 bug）。
+      ok('场景：暖色刚好 25% + 2 行 → 认（阈值是 >=，不是 >）',
+        classifyScene({ menuRows: 0, combo: 0, subtitle: 0, hudBright: 0, deathWarm: 0.25, deathRows: 2 }).scene === 'death')
+      ok('场景：暖色 24% + 2 行 → 不认（低于门槛）',
+        classifyScene({ menuRows: 0, combo: 0, subtitle: 0, hudBright: 0, deathWarm: 0.24, deathRows: 2 }).scene !== 'death')
+      ok('场景：暖色够但只有 1 行白字 → 不认（门槛是 2 行）',
+        classifyScene({ menuRows: 0, combo: 0, subtitle: 0, hudBright: 0, deathWarm: 0.6639, deathRows: 1 }).scene !== 'death')
+
+      // 死亡菜单的两行选项落在 SUBTITLE_BOX 下沿，会被当成「有人在说话」。
+      // 若 death 判在 dialog 之后，就会去按确认跳对话 —— 而在死亡菜单上确认 = 再次作战。
+      ok('场景：death 优先于 dialog（有字幕也仍是 death）',
+        classifyScene({ ...death, subtitle: 0.01 }).scene === 'death')
+      // 同理要排在 combat 之前：剧情战里也可能同时出现这两行字。
+      ok('场景：death 优先于 combat（连击数有值也仍是 death）',
+        classifyScene({ ...death, combo: 0.03 }).scene === 'death')
+      // 但菜单仍排第一：红字警告盖住一切（这是原有设计，别为了 death 把它挤到后面）。
+      ok('场景：menu 仍优先于 death（红字警告盖住一切）',
+        classifyScene({ ...death, menuRows: 1 }).scene === 'menu')
+    }
+
     // 6. 卡住标记
     ok('场景：外部标记卡住 → stuck',
       classifyScene({ menuRows: 0, combo: 0, subtitle: 0, hud: 0.5 }, { stuck: true, stuckMs: 60000 }).scene === 'stuck')
@@ -787,6 +829,50 @@ console.log('\n[6] 自主连玩策略')
   const pNoRed = createPolicy('advance')
   const noRedMoves = Array.from({ length: 3 }, (_, i) => pNoRed.decide({ motion: 0.01, hudKick: 0, hudBright: 0.06, darkRatio: 0.11, listBands: 10, menuRows: 0, progress: 0.5 }, { now: i * 700 }).action)
   ok('没有红字（战斗/明亮场景）→ 不按 Esc', !noRedMoves.includes('pause'), noRedMoves.join(','))
+
+  // ⑥g3 死亡菜单在 decide() 里的行为（2026-11-03）。
+  //      这一组守的是「fight 档对着死亡菜单空按 9.6 秒」那个 bug 的**决策侧**：
+  //      上面 5b 那组守的是 classifyScene 认不认得出，这里守的是认出来之后 decide 干什么。
+  //      两处都要有 —— 只认出来不发号施令，bug 照旧。
+  //
+  //      死亡帧的指标取自 shots/death-menu/death-menu-01.png 实测值：
+  //      hudBright = 0（一个亮像素都没有）、hud = 28.5（暗红棕底本身有亮度）、
+  //      deathWarm = 66.39%、deathRows = 2。
+  {
+    const deathM = {
+      hudBright: 0, hud: 28.5, menuRows: 0, combo: 0, subtitle: 0,
+      deathWarm: 0.6639, deathRows: 2,
+    }
+    const pDeath = createPolicy('fight')
+    const dDeath = pDeath.decide(deathM, { now: 0 })
+    ok('死亡菜单 → 只 wait，不按任何键（Enter 在这是「再次作战」）',
+      dDeath.action === 'wait', JSON.stringify(dDeath))
+    ok('死亡菜单的理由说的是死亡，不是「没检测到 HUD」',
+      /死亡/.test(dDeath.why || '') && !/没检测到 HUD/.test(dDeath.why || ''), dDeath.why)
+
+    // 这条文案将来要被 classifyOutcome 拿正则认（task-8）。三条硬约束，现在钉死：
+    //   ① 不许有数字 —— 百分比每帧都在变（warm 66.39%~88.47%），拼进来就没法用正则匹配
+    //   ② 不许含 ③ 档词 —— 会被「跑完了但没达成」先吞掉
+    //   ③ 不许含 ① 档词 —— 会被「环境出错」先吞掉
+    ok('死亡文案不含数字（百分比每帧都在变，拼进来就没法正则匹配）',
+      !/\d/.test(dDeath.why || ''), dDeath.why)
+    ok('死亡文案不含 classifyOutcome 的前置档位词（否则会被先吞掉）',
+      !/没进展|停在菜单|强化界面|无响应|动作非法|抓帧失败|帧不可用/.test(dDeath.why || ''), dDeath.why)
+
+    // 为什么必须自己 stillStreak++：这条分支在 :1115 那条「没检测到 HUD」之前就 return 了，
+    // 不计数就永远走不到 game.mjs:1572 的 `stillStreak >= 9` 收手判据，
+    // 结果是在死亡菜单上一直空等到「玩满 N 秒」—— 比修之前更糟。
+    const pDeath9 = createPolicy('fight')
+    for (let i = 0; i < 9; i++) pDeath9.decide(deathM, { now: i * 500 })
+    ok('连吃 9 帧死亡 → stillStreak 攒够（game.mjs 的收手判据能触发）',
+      pDeath9.stillStreak >= 9, `stillStreak=${pDeath9.stillStreak}`)
+
+    // 别误伤：正常画面不能被死亡分支吃掉。
+    const pAlive = createPolicy('fight')
+    const dAlive = pAlive.decide({ hudBright: 0.4, hud: 120, menuRows: 0, combo: 0, subtitle: 0, deathWarm: 0, deathRows: 0, motion: 0.5 }, { now: 0 })
+    ok('正常画面（有 HUD、无暖色）不会被当成死亡',
+      !/死亡/.test(dAlive.why || ''), dAlive.why)
+  }
 
   // ⑥g2 「红色文字行」必须能跨分析宽度成立，而且不能把块状红特效当成文字。
   //      2026-10-26 实测的两个真 bug：

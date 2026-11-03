@@ -17,6 +17,9 @@
 import { loadHostDeps } from './lib/hostdeps.mjs'
 import { session } from './lib/session.mjs'
 import { summarizeRun } from './lib/autoplay.mjs'
+// 场景归类（死亡菜单 / 暂停菜单 / 探索 / 战斗 / 旁白 / 黑屏）只写在 scene.mjs 里一份，
+// 这里只是把结论读出来给模型看 —— 别在 agent.js 里再写一套判据，那会立刻漂移。
+import { classifyScene } from './lib/games/icey/scene.mjs'
 // 批量动作：把「一串动作」压进一次工具调用，省掉中间的模型往返（每次 6~12 秒）
 import { parseActionSpec, MAX_SEQUENCE } from './lib/control.mjs'
 import { registerIceyDev } from './lib/devtool.mjs'
@@ -381,6 +384,25 @@ export function apply(ctx) {
         // ⚠️ 必须是 frame.metrics，不是 frame.health ——
         //   health 只有宽高/黑白比/哈希，读 enemyDir 永远是 undefined（2026-10-29 踩过）。
         const m = frame.metrics || {}
+        // 场景：先说「这一帧到底是什么画面」，再说细节。
+        // 模型以前只能从像素读数自己猜是不是死亡菜单 —— 猜错的代价是它自己按 Enter。
+        // 判据不在这里写，一律走 scene.mjs 的 classifyScene（唯一权威源）。
+        {
+          const cls = classifyScene(m)
+          const word = {
+            death: '死亡菜单（再次作战 / 重新开始）',
+            menu: '暂停菜单',
+            combat: '战斗',
+            dialog: '旁白/对话',
+            blank: '黑屏（过场或加载）',
+            stuck: '卡住了（很久没有进展）',
+            explore: '探索（有 HUD，可以推进）',
+          }[cls.scene] || cls.scene
+          lines.push(`场景：${word} —— ${cls.why}`)
+          if (cls.scene === 'death') {
+            lines.push('  ⚠️ 这里 Enter = 再次作战（会丢进度），「重新开始」离它只有一下方向键 —— 别盲按。')
+          }
+        }
         const dirWord = m.enemyDir === 'left' ? '左' : m.enemyDir === 'right' ? '右' : null
         const ad = m.arrowDiag
         if (dirWord) {
