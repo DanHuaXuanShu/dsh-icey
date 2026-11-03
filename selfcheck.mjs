@@ -479,10 +479,16 @@ console.log('\n[3] 控制映射')
   {
     const { classifyScene, StuckDetector, STUCK_MS, hudRatio } = await import('./lib/games/icey/scene.mjs')
 
-    // 1. 菜单优先于一切
-    ok('场景：有红色警告文字行 → menu',
-      classifyScene({ menuRows: 1, combo: 0.03, hud: 0.5 }).scene === 'menu',
-      JSON.stringify(classifyScene({ menuRows: 1, combo: 0.03, hud: 0.5 })))
+    // 1. 菜单优先于一切 —— 但要连「HUD 已压暗」一起判（2026-11-03 加的第二道闸）。
+    //    原断言只给 hud:0.5、不给 hudBright，靠「字段缺失当 0」才过，等于没测到新闸。
+    //    实际依据：640 宽下 `shots/combat` 593 帧里有 5 帧只凭红字行就被判成菜单，
+    //    加上「HUD 亮像素 ≤1%」之后降到 2 帧（真菜单实测 0.0%~0.2%，余量足够）。
+    ok('场景：红字行 + HUD 已压暗 → menu',
+      classifyScene({ menuRows: 1, combo: 0.03, hud: 0.5, hudBright: 0 }).scene === 'menu',
+      JSON.stringify(classifyScene({ menuRows: 1, combo: 0.03, hud: 0.5, hudBright: 0 })))
+    ok('场景：红字行但 HUD 还亮着 → 不算 menu（那是战斗帧，按 Esc 会误操作）',
+      classifyScene({ menuRows: 1, combo: 0, hud: 0.5, hudBright: 0.05 }).scene !== 'menu',
+      JSON.stringify(classifyScene({ menuRows: 1, combo: 0, hud: 0.5, hudBright: 0.05 })))
 
     // 2. 连击数在涨 → combat（哪怕同时有字幕，也该打不该读字）
     ok('场景：连击数在涨 → combat',
