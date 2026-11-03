@@ -15,10 +15,10 @@ const CASES = [
   ['shots/combat/c0001.png', 'combat'],
   ['shots/combat/c0005.png', 'combat'],
   // 2026-10-29 从录像抽的「别的界面」—— 这几张是判据的关键负样本：
-  // 如果把招式说明 / 地图列表 / 死亡画面误判成强化界面，插件走进去按 Enter 就会乱花钱。
+  // 如果把招式说明 / 地图列表 / 全黑帧误判成强化界面，插件走进去按 Enter 就会乱花钱。
   ['shots/ui-neg/t285.png', '设置菜单'],
   ['shots/ui-neg/t500.png', '招式说明'],
-  ['shots/ui-neg/t790.png', '死亡画面'],
+  ['shots/ui-neg/t790.png', '全黑帧'],
   ['shots/ui-neg/t1032.png', '地图列表'],
 ]
 const WIDTHS = [1280, 720]

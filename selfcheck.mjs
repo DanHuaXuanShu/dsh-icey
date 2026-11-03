@@ -2183,7 +2183,7 @@ console.log('\n[6] 自主连玩策略')
       ['probe/fixtures/upgrade-menu.png', true, '强化界面（弥城死镇）'],
       ['probe/fixtures/station-fullframe.png', false, '普通游戏画面'],
       ['shots/watch/w0008.png', false, '暂停菜单'],
-      ['probe/fixtures/ui-negative-death.png', false, '死亡画面'],
+      ['probe/fixtures/ui-negative-death.png', false, '全黑帧（不是死亡画面）'],
       ['shots/ui-neg/t1032.png', false, '地图列表'],
     ]
     for (const [p, want, label] of upCases) {
@@ -2269,7 +2269,7 @@ console.log('\n[6] 自主连玩策略')
       const barCases = [
         ['shots/ui-neg/barrier-174.png', true, '用户录像 2:54（右侧青色光幕）'],
         ['probe/fixtures/station-fullframe.png', false, '普通探索画面'],
-        ['probe/fixtures/ui-negative-death.png', false, '死亡画面'],
+        ['probe/fixtures/ui-negative-death.png', false, '全黑帧（不是死亡画面）'],
       ]
       for (const [p, want, note] of barCases) {
         // 🔴 同上：样本缺失 → 只打 `--`，不记分。原来写 ok(..., true, p) 是假通过。
