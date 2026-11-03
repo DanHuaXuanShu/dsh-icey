@@ -1933,6 +1933,20 @@ console.log('\n[6] 自主连玩策略')
   const cfgMod = await import('./lib/config.mjs')
   ok('分析帧宽度有默认值', cfgMod.DEFAULTS.analysisWidth >= 320 && cfgMod.DEFAULTS.analysisWidth <= 800, String(cfgMod.DEFAULTS.analysisWidth))
   ok('分析帧宽度会被钳制', cfgMod.normalizeConfig({ analysisWidth: 9999 }).analysisWidth === 800 && cfgMod.normalizeConfig({ analysisWidth: 1 }).analysisWidth === 320, '')
+  // 🔴 2026-11-03（task-11）：默认分析宽度不得低于 640。
+  //    实机同一张死亡菜单：480 宽报「探索」认不出来，640 宽才稳定报「死亡菜单（2 行白色选项）」。
+  //    480 的降采样把「重新开始」那行糊掉了，两行变一行 ⇒ DEATH_ROWS_MIN=2 不成立，
+  //    死亡判据整条失效、连玩一路空转到「玩满 N 秒」还报「完成」。
+  //    这条断言就是拦住「谁把它优化回 480」的那道门。
+  ok('默认分析宽度不低于 640（低于它死亡菜单就认不出）', cfgMod.DEFAULTS.analysisWidth >= 640, String(cfgMod.DEFAULTS.analysisWidth))
+  // 同一条风险的第二个入口：game.mjs 里 `cfg.analysisWidth || <兜底>` 那个字面量。
+  // 配置缺失时退回 480 会让上面的修复静默失效，所以单独守一次字面量。
+  {
+    const fsMod = await import('node:fs')
+    const gameSrc = fsMod.readFileSync(new URL('./lib/game.mjs', import.meta.url), 'utf8')
+    const m = gameSrc.match(/const analysisWidth = cfg\.analysisWidth \|\| (\d+)/)
+    ok('连玩循环的宽度兜底不是 480', !!m && Number(m[1]) >= 640, m ? `兜底=${m[1]}` : '没找到那行')
+  }
 
   // ㉗ 连段：出招表来自游戏内招式表，打架时真的会打出来
   ok('连段表非空且都是合法键（含 a/d、o、k=跳跃、组合符 + 与分阶段 |）', COMBOS.length >= 5 && COMBOS.every((c) => /^[jilu89wsadok+|]+$/.test(c)), JSON.stringify(COMBOS))
