@@ -1538,6 +1538,11 @@ console.log('\n[6] 自主连玩策略')
       ['动作非法（jump）：boom', RUN_STATUS.failed],
       ['画面一直停在菜单/强化界面：已按 3 次 Esc 仍未退出。为避免误按「升级」花钱，先停在这里，请人工确认界面状态。', RUN_STATUS.partial],
       ['连着几轮都没进展：这里可能是一扇打不开的门、解谜或分支选择 —— 停下把画面交回，由模型/人来判断', RUN_STATUS.partial],
+      // 键盘布局那条（game.mjs 里 `键盘布局被切回中文了`）以前漏在表外，补上。
+      ['键盘布局被切回中文了（0x0804），自动切英文没成功 —— 这时候所有按键都进不了游戏，继续跑只会白费时间。', RUN_STATUS.failed],
+      // 角色死亡（2026-11-03 加）。死亡既不是「完成」也不是「失败」也不是「中止」——
+      // 详见 autoplay.mjs 的 classifyOutcome ②b 那段论证。这里守住那个结论。
+      ['角色死亡：画面是「再次作战 / 重新开始」的死亡菜单（HUD 已全无）。已经停手交回 —— 这里 Enter = 再次作战（会丢进度），方向键会把「重新开始」挪进高亮，所以一个键都没按。要不要复活请确认后再动。', RUN_STATUS.partial],
       ['玩满 60 秒', RUN_STATUS.completed],
     ]
     let allGood = true
@@ -1546,7 +1551,20 @@ console.log('\n[6] 自主连玩策略')
       const got = classifyOutcome({ stopped: text })
       if (got !== want) { allGood = false; wrong.push(`${text.slice(0, 12)}…→${got}(要${want})`) }
     }
-    ok('连玩的 11 种结束原因都能正确分档', allGood, wrong.join(' / '))
+    ok(`连玩的 ${cases.length} 种结束原因都能正确分档`, allGood, wrong.join(' / '))
+
+    // 死亡那条单独再钉三个「不许被别的档吞掉」的约束 —— 它是 new 的，最容易漂。
+    {
+      const deathStopped = '角色死亡：画面是「再次作战 / 重新开始」的死亡菜单（HUD 已全无）。'
+        + '已经停手交回 —— 这里 Enter = 再次作战（会丢进度），方向键会把「重新开始」挪进高亮，'
+        + '所以一个键都没按。要不要复活请确认后再动。'
+      ok('死亡结局归「部分完成」（不是完成、不是失败、不是中止）',
+        classifyOutcome({ stopped: deathStopped }) === RUN_STATUS.partial,
+        String(classifyOutcome({ stopped: deathStopped })))
+      ok('死亡文案不含「玩满」（否则会被兜底判成完成）', !/玩满/.test(deathStopped), deathStopped)
+      ok('死亡文案不含「没进展/停在菜单」（否则会被 ③ 先吞成卡住）',
+        !/没进展|停在菜单/.test(deathStopped), deathStopped)
+    }
     ok('带了 error 字段一律算失败',
       classifyOutcome({ stopped: '玩满 30 秒', error: 'boom' }) === RUN_STATUS.failed, '')
     // 这条是本轮的核心：跑满了、也一直在打，但 Boss 血条没动 —— 旧写法会报「完成」
