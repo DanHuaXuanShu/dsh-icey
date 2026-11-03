@@ -37,4 +37,5 @@ desktop.ini
 
 probe/video/
 
-probe/video/
+# npm 跑过之后留下的缓存（不提交，也不删：删了下次还会生成）
+.npm-cache/

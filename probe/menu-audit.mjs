@@ -3,7 +3,7 @@
  *
  * 为什么需要它（2026-10-26 踩到的两个真 bug，都靠这个脚本量出来）：
  *   ① `findRedTextRows` 原来只在 1280×745 上标定，而插件实际分析宽度是 analysisWidth
- *      （默认 480）。真菜单的红色警告行缩到 480 只剩 3 行高，被 `minBandHeight=5` 滤掉
+ *      （默认 640；480 及以下已不允许，见 config.mjs 的钳制下界）。真菜单的红色警告行缩到 480 只剩 3 行高，被 `minBandHeight=5` 滤掉
  *      ⇒ 默认配置下**暂停菜单根本认不出来**，插件也就不会按 Esc 退出它。
  *   ② 480 宽下战斗里的红色霓虹窗/伤害火花反而能过旧判据 ⇒ 593 张战斗帧里 28 帧被判成
  *      「在菜单」，决策层按了 22 次 Esc（战斗中按 Esc = 打开暂停菜单）。
@@ -30,7 +30,7 @@ function load(path, maxWidth) {
 
 /* ---------------- ① 真菜单在各种分析宽度下都要认得出 ---------------- */
 console.log('=== ① 真菜单（红色警告行）在各分析宽度下 ===')
-console.log('（配置允许 analysisWidth 320~800；默认 480）')
+console.log('（配置允许 analysisWidth 640~800；默认 640。下面 320/400/480 三档是现代码不允许、但保留来证明为什么不能低）')
 for (const w of [320, 400, 480, 640, 800, 960, 1280]) {
   const f = load(MENU_FRAME, w)
   const bands = findRedTextRows(f.data, f.width, f.height)

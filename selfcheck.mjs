@@ -1937,8 +1937,15 @@ console.log('\n[6] 自主连玩策略')
 
   // ㉖c 多轮历史配置与分段分析帧（对齐 GameScaling 的 history_len / image_size）
   const cfgMod = await import('./lib/config.mjs')
-  ok('分析帧宽度有默认值', cfgMod.DEFAULTS.analysisWidth >= 320 && cfgMod.DEFAULTS.analysisWidth <= 800, String(cfgMod.DEFAULTS.analysisWidth))
-  ok('分析帧宽度会被钳制', cfgMod.normalizeConfig({ analysisWidth: 9999 }).analysisWidth === 800 && cfgMod.normalizeConfig({ analysisWidth: 1 }).analysisWidth === 320, '')
+  ok('分析帧宽度有默认值', cfgMod.DEFAULTS.analysisWidth >= 640 && cfgMod.DEFAULTS.analysisWidth <= 800, String(cfgMod.DEFAULTS.analysisWidth))
+  ok('分析帧宽度会被钳制（下界 640：低于它死亡菜单认不出）', cfgMod.normalizeConfig({ analysisWidth: 9999 }).analysisWidth === 800 && cfgMod.normalizeConfig({ analysisWidth: 1 }).analysisWidth === 640, '')
+  // 🔴 2026-11-03：这条守的是「配一个 480 绕过去」那条后门。
+  //    此前只改了 DEFAULTS 和 game.mjs 的兜底，normalizeConfig 仍允许 320~800，
+  //    于是配置里写 `analysisWidth: 480` 会让所有修复当场失效且不报错。
+  ok('配置里写 480 也压不回 480（实际生效必须 ≥640）',
+    cfgMod.normalizeConfig({ analysisWidth: 480 }).analysisWidth >= 640 &&
+    cfgMod.normalizeConfig({ analysisWidth: 320 }).analysisWidth >= 640,
+    `480→${cfgMod.normalizeConfig({ analysisWidth: 480 }).analysisWidth} / 320→${cfgMod.normalizeConfig({ analysisWidth: 320 }).analysisWidth}`)
   // 🔴 2026-11-03（task-11）：默认分析宽度不得低于 640。
   //    实机同一张死亡菜单：480 宽报「探索」认不出来，640 宽才稳定报「死亡菜单（2 行白色选项）」。
   //    480 的降采样把「重新开始」那行糊掉了，两行变一行 ⇒ DEATH_ROWS_MIN=2 不成立，
