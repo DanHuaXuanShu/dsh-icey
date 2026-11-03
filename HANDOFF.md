@@ -1247,6 +1247,32 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force   # 本机执�
 ⚠️ 死亡界面上「重新开始」离「再次作战」只有**一下方向键**——所以在死亡界面附近**绝不能盲按方向键**。
 这也是「盲按 Enter 有风险」之外新的一条：**Enter 在死亡界面是安全的（再次作战），方向键不是。**
 
+### 六之二、死亡判据怎么复验（2026-11-03 立的配方，脚本不留在仓库里）
+
+规矩 4 不许留「存在但没人跑」的脚本，而这条复验要依赖 `shots/` 里那 4500 多张截图，
+不适合接进 `selfcheck.mjs`（自检不能依赖语料目录）。所以脚本删了，配方记在这里。
+下次改 `DEATH_*` 那几个常量、或者怀疑判据漂了，照这个跑一遍：
+
+```js
+// 临时写在仓库外或 probe/ 下，跑完就删
+import { readFileSync, readdirSync } from 'node:fs'
+import { decodePng } from './lib/png-decode.mjs'
+import { analyzeFrame } from './lib/autoplay.mjs'
+import { classifyScene } from './lib/games/icey/scene.mjs'
+// 遍历 shots/ 每个子目录的 *.png：
+//   decodePng → analyzeFrame(rgba,w,h,null) → classifyScene(m)
+// 统计 scene==='death' 的命中 / 误报，并打出每帧的 deathWarm / deathRows / hudBright
+```
+
+**通过标准**（2026-11-03 全量 4526 帧实测值）：
+- `death` 命中 **40 帧**（`shots/timeline` 39 + `shots/death-menu` 1）
+- 负样本 **0 误报**；场景分布 `dialog 491 / explore 2503 / blank 49 / combat 1257 / menu 186 / death 40`
+- 正样本 `deathWarm` **66.39%–88.47%**、`deathRows` **2–3**、`hudBright` 全为 0
+- 两个必查的高暖色负样本：`shots/timeline/f01021.png`（99.87%，rows 0）、`shots/watch/w0448.png`（81.59%，rows 0）
+
+⚠️ 阈值扫描（决定 `DEATH_WARM_MIN` 能不能动）：0.20 → 47 命中 / 40 真 / **7 误报**；
+0.25~0.66 → 40/40/0；0.67 → 39 命中（**漏 1**）。0.25 是窗口下沿，故意偏召回，别往上调着「求稳」。
+
 ### 七、复现路线（下次接着玩照着走）
 
 ```
