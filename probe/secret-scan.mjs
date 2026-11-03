@@ -62,6 +62,8 @@ const BAD_NAME = /(^|[\\/])\.env(\.|$)|\.(pem|pfx|p12|keystore)$|^id_(rsa|ed2551
 
 const hits = []
 const suspiciousNames = []
+/** 读不进去的目录。跳过它们但不能静默 —— 静默跳过 = 假通过（HANDOFF §17.5 规矩 5） */
+const unreadable = []
 let scanned = 0
 
 function scanText(text, where) {
@@ -74,7 +76,17 @@ function scanText(text, where) {
 }
 
 function walk(dir) {
-  for (const name of readdirSync(dir)) {
+  let names
+  try {
+    names = readdirSync(dir)
+  } catch (err) {
+    // 权限不足的目录不该让整个闸门崩掉（2026-11-03：工作区里别的进程留下的
+    // pip-build-tracker-* 三个目录属主不对，直接让 npm publish 的 prepublishOnly 崩了）。
+    // 但必须记下来在结尾报告 —— 「没扫到」不能当成「干净」。
+    unreadable.push(`${relative(ROOT, dir) || '.'}（${err.code || err.message}）`)
+    return
+  }
+  for (const name of names) {
     const p = join(dir, name)
     let st
     try { st = statSync(p) } catch { continue }
@@ -92,6 +104,10 @@ function walk(dir) {
 console.log(`扫描工作区: ${ROOT}`)
 walk(ROOT)
 console.log(`  扫了 ${scanned} 个文本文件`)
+if (unreadable.length) {
+  console.log(`\n⚠️ ${unreadable.length} 个目录读不进去，已跳过 —— 这些地方**没扫**，别当成已查：`)
+  for (const d of unreadable) console.log(`  - ${d}`)
+}
 
 if (suspiciousNames.length) {
   console.log('\n⚠️ 可疑文件名（很可能不该提交）：')
@@ -136,4 +152,6 @@ if (suspiciousNames.length) {
   process.exit(1)
 }
 
-console.log('\n✅ 没有发现硬编码密钥')
+console.log(unreadable.length
+  ? `\n⚠️ 扫过的地方没有发现硬编码密钥 —— 但有 ${unreadable.length} 个目录没扫到（见上），结论只覆盖扫过的部分`
+  : '\n✅ 没有发现硬编码密钥')
