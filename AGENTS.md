@@ -41,6 +41,15 @@
    → `probe`（有没有重载入口）→ `reload apply=true` → 再 `stamp` 复测。
    没有 `icey_dev` 时用 `plugin_manager action=set_bundle target=dsh-icey enabled=false/true`；再不行才去 GUI 关再开。
    最快的「有没有重载」判据：`icey_play` 输出里还是旧文案，就是没重载。
+   🔴 **2026-11-03 实测更正：`icey_dev reload` 是假的 —— 它不重载任何代码，连入口 `agent.js` 都不重载。**
+   两次独立插桩证伪：①在 `lib/game.mjs` 连玩循环里写文件（工作区与家目录两个路径都没生成）；
+   ②给 `lib/autoplay.mjs` 加 `CODE_STAMP`、由 `agent.js` 的 `icey_status` 打出来 —— reload 之后打不出来。
+   `devctl.log` 里三次 reload 都只有「尝试调用 … 返回 undefined」，**没有任何成功标记**，
+   正是规矩 5 那个「没报错 = 以为成功」。
+   **真正会重载的是 `plugin_manager action=set_bundle target=dsh-icey enabled=false` 再 `enabled=true`**，
+   用同一个 `CODE_STAMP` 正反各验过一次：关开之后标记出现；撤掉标记再关开，标记消失。
+   `icey_dev stamp` 说「0 个装载之后才改的」是**按文件 mtime 比**，不反映进程里加载的是哪个版本，别拿它当证据。
+   判断「跑的是不是新代码」只有一个办法：**加一个能从工具输出里看见的标记，重载后看它出不出来。**
 2. **`node selfcheck.mjs` 必须过，且退出码要卡住 `git commit`**（`if ($LASTEXITCODE -ne 0) { exit 1 }`）。
    只看 commit 退出码等于没门禁。项数以实际输出为准，别背数字。
 3. **新增/修改断言，先证明它会红**，而且红要落在预期的那一条上。
